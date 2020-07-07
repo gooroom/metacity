@@ -1,3 +1,12 @@
+metacity (1:3.30.1-2+grm2u1) unstable; urgency=medium
+
+  [ boyeon.choi ]
+  * [4c8c04ec] [Bug:2435] Aligned the text in the message box
+
+  [ Gooroom Autobuilder ]
+
+ -- Gooroom Autobuilder <jenkins@gooroom.kr>  Tue, 07 Jul 2020 15:48:24 +0900
+
 metacity (1:3.30.1-2) unstable; urgency=medium
 
   * Add -Wl,-O1 to our LDFLAGS
