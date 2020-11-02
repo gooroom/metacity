@@ -1,3 +1,12 @@
+metacity (1:3.30.1-2+grm2u2) unstable; urgency=medium
+
+  [ HaeRyong Jeong ]
+  * [32017f82] [Bug:2576] Fixed not used shortcut key
+
+  [ Gooroom Autobuilder ]
+
+ -- Gooroom Autobuilder <jenkins@gooroom.kr>  Mon, 02 Nov 2020 16:19:42 +0900
+
 metacity (1:3.30.1-2+grm2u1) unstable; urgency=medium
 
   [ boyeon.choi ]
