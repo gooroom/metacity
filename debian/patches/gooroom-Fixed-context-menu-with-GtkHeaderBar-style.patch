@@ -1,0 +1,91 @@
+From 759405aede7038522422ef23256a3a87d1f99a87 Mon Sep 17 00:00:00 2001
+From: donghun <donghun@gooroom.kr>
+Date: Tue, 9 Mar 2021 18:42:25 +0900
+Subject: [PATCH] Fixed context menu with GtkHeaderBar style
+
+Change-Id: I11f261ff924fb015ee0addfb4121e9d2ed5bc960
+---
+ src/core/window.c | 12 ++++++++++--
+ src/ui/menu.c     | 13 +++++++------
+ 2 files changed, 17 insertions(+), 8 deletions(-)
+
+diff --git a/src/core/window.c b/src/core/window.c
+index 325f929..a84c5aa 100644
+--- a/src/core/window.c
++++ b/src/core/window.c
+@@ -7188,10 +7188,15 @@ meta_window_show_menu (MetaWindow         *window,
+ 
+   meta_screen_free_workspace_layout (&layout);
+ 
++  ops |= META_MENU_OP_UNMAXIMIZE;
++  ops |= META_MENU_OP_MAXIMIZE;
++#if 0
++  /*[Bug 3078, 3121, 3120] Apply GtkHeaderBar Style  */
+   if (META_WINDOW_MAXIMIZED (window))
+     ops |= META_MENU_OP_UNMAXIMIZE;
+   else
+     ops |= META_MENU_OP_MAXIMIZE;
++#endif
+ 
+ #if 0
+   if (window->shaded)
+@@ -7208,8 +7213,11 @@ meta_window_show_menu (MetaWindow         *window,
+   else
+     ops |= META_MENU_OP_ABOVE;
+ 
++  if (!META_WINDOW_MAXIMIZED (window))
++    insensitive |= META_MENU_OP_UNMAXIMIZE;
++
+   if (!window->has_maximize_func)
+-    insensitive |= META_MENU_OP_UNMAXIMIZE | META_MENU_OP_MAXIMIZE;
++    insensitive |= META_MENU_OP_MAXIMIZE;
+ 
+   if (!window->has_minimize_func)
+     insensitive |= META_MENU_OP_MINIMIZE;
+@@ -7224,7 +7232,7 @@ meta_window_show_menu (MetaWindow         *window,
+     insensitive |= META_MENU_OP_MOVE;
+ 
+   if (!META_WINDOW_ALLOWS_RESIZE (window))
+-    insensitive |= META_MENU_OP_RESIZE;
++    insensitive |= META_MENU_OP_RESIZE | META_MENU_OP_MAXIMIZE;
+ 
+    if (window->always_sticky)
+      insensitive |= META_MENU_OP_STICK | META_MENU_OP_UNSTICK | META_MENU_OP_WORKSPACES;
+diff --git a/src/ui/menu.c b/src/ui/menu.c
+index 7d946e1..27777a4 100644
+--- a/src/ui/menu.c
++++ b/src/ui/menu.c
+@@ -61,23 +61,24 @@ struct _MenuData
+ static void activate_cb (GtkWidget *menuitem, gpointer data);
+ 
+ static MenuItem menuitems[] = {
++  /* Translators: Translate this string the same way as you do in libwnck! */
++  { META_MENU_OP_UNMAXIMIZE, MENU_ITEM_NORMAL, FALSE, N_("Unma_ximize") },
++  /* Translators: Translate this string the same way as you do in libwnck! */
++  { META_MENU_OP_MOVE, MENU_ITEM_NORMAL, FALSE, N_("_Move") },
++  /* Translators: Translate this string the same way as you do in libwnck! */
++  { META_MENU_OP_RESIZE, MENU_ITEM_NORMAL, FALSE, N_("_Resize") },
+   /* Translators: Translate this string the same way as you do in libwnck! */
+   { META_MENU_OP_MINIMIZE, MENU_ITEM_NORMAL, FALSE, N_("Mi_nimize") },
+   /* Translators: Translate this string the same way as you do in libwnck! */
+   { META_MENU_OP_MAXIMIZE, MENU_ITEM_NORMAL, FALSE, N_("Ma_ximize") },
+   /* Translators: Translate this string the same way as you do in libwnck! */
+-  { META_MENU_OP_UNMAXIMIZE, MENU_ITEM_NORMAL, FALSE, N_("Unma_ximize") },
+-  /* Translators: Translate this string the same way as you do in libwnck! */
+   { META_MENU_OP_SHADE, MENU_ITEM_NORMAL, FALSE, N_("Roll _Up") },
+   /* Translators: Translate this string the same way as you do in libwnck! */
+   { META_MENU_OP_UNSHADE, MENU_ITEM_NORMAL, FALSE, N_("_Unroll") },
+   /* Translators: Translate this string the same way as you do in libwnck! */
+-  { META_MENU_OP_MOVE, MENU_ITEM_NORMAL, FALSE, N_("_Move") },
+-  /* Translators: Translate this string the same way as you do in libwnck! */
+-  { META_MENU_OP_RESIZE, MENU_ITEM_NORMAL, FALSE, N_("_Resize") },
+-  /* Translators: Translate this string the same way as you do in libwnck! */
+   { META_MENU_OP_RECOVER, MENU_ITEM_NORMAL, FALSE, N_("Move Titlebar On_screen") },
+   { META_MENU_OP_WORKSPACES, MENU_ITEM_SEPARATOR, FALSE, NULL }, /* separator */
++  { 0, MENU_ITEM_SEPARATOR, FALSE, NULL }, /* separator */
+   /* Translators: Translate this string the same way as you do in libwnck! */
+   { META_MENU_OP_ABOVE, MENU_ITEM_CHECKBOX, FALSE, N_("Always on _Top") },
+   /* Translators: Translate this string the same way as you do in libwnck! */
+-- 
+2.20.1
+
