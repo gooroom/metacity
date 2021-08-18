@@ -39,6 +39,7 @@
 #include "stack.h"
 #include "iconcache.h"
 #include <X11/Xutil.h>
+#include <X11/extensions/Xfixes.h>
 #include <cairo.h>
 #include <gdk-pixbuf/gdk-pixbuf.h>
 
@@ -99,8 +100,11 @@ struct _MetaWindow
   MetaScreen *screen;
   MetaWorkspace *workspace;
   Window xwindow;
+
   /* may be NULL! not all windows get decorated */
   MetaFrame *frame;
+  guint check_decorated_id;
+
   int depth;
   Visual *xvisual;
   Colormap colormap;
@@ -127,7 +131,7 @@ struct _MetaWindow
   char *startup_id;
   char *gtk_theme_variant;
 
-  int net_wm_pid;
+  pid_t client_pid;
 
   Window xtransient_for;
   Window xgroup_leader;
@@ -338,14 +342,17 @@ struct _MetaWindow
   /* if TRUE, we are freezing updates during a resize */
   guint updates_frozen_for_resize : 1;
 
+  /* whether focus should be restored on map */
+  guint restore_focus_on_map : 1;
+
   /* if non-NULL, the bounds of the window frame */
   cairo_region_t *frame_bounds;
 
-  /* if non-NULL, the bounding shape region of the window */
-  cairo_region_t *shape_region;
+  /* if non-None, the bounding shape region of the window */
+  XserverRegion shape_region;
 
-  /* if non-NULL, the opaque region _NET_WM_OPAQUE_REGION */
-  cairo_region_t *opaque_region;
+  /* if non-None, the opaque region _NET_WM_OPAQUE_REGION */
+  XserverRegion opaque_region;
 
   /* _NET_WM_WINDOW_OPACITY */
   guint opacity;
@@ -356,15 +363,15 @@ struct _MetaWindow
   /* XSync update counter */
   XSyncCounter sync_request_counter;
   guint sync_request_serial;
-  GTimeVal sync_request_time;
+  gint64 sync_request_time;
   /* alarm monitoring client's _NET_WM_SYNC_REQUEST_COUNTER */
   XSyncAlarm sync_request_alarm;
 
-  /* Number of UnmapNotify that are caused by us, if
-   * we get UnmapNotify with none pending then the client
-   * is withdrawing the window.
+  /* List with UnmapNotify serials that are caused by us, if we get
+   * UnmapNotify with serial that is not in pending list then the
+   * client is withdrawing the window.
    */
-  int unmaps_pending;
+  GList *unmaps_pending;
 
   /* set to the most recent user-interaction event timestamp that we
      know about for this window */
@@ -519,11 +526,11 @@ void        meta_window_resize_with_gravity (MetaWindow  *window,
 /* Return whether the window would be showing if we were on its workspace */
 gboolean    meta_window_showing_on_its_workspace (MetaWindow *window);
 
+gboolean    meta_window_should_be_showing_on_workspace (MetaWindow    *window,
+                                                        MetaWorkspace *workspace);
+
 /* Return whether the window should be currently mapped */
 gboolean    meta_window_should_be_showing   (MetaWindow  *window);
-
-/* See warning in window.c about this function */
-gboolean    __window_is_terminal (MetaWindow *window);
 
 void        meta_window_update_struts      (MetaWindow  *window);
 
@@ -559,16 +566,6 @@ void        meta_window_get_input_rect       (const MetaWindow *window,
                                               MetaRectangle    *rect);
 void        meta_window_get_outer_rect       (const MetaWindow *window,
                                               MetaRectangle    *rect);
-void        meta_window_get_xor_rect         (MetaWindow          *window,
-                                              const MetaRectangle *grab_wireframe_rect,
-                                              MetaRectangle       *xor_rect);
-void        meta_window_begin_wireframe (MetaWindow *window);
-void        meta_window_update_wireframe (MetaWindow *window,
-                                          int         x,
-                                          int         y,
-                                          int         width,
-                                          int         height);
-void        meta_window_end_wireframe (MetaWindow *window);
 
 void        meta_window_delete             (MetaWindow  *window,
                                             guint32      timestamp);
@@ -601,7 +598,7 @@ unsigned long meta_window_get_net_wm_desktop (MetaWindow *window);
 
 void meta_window_show_menu (MetaWindow         *window,
                             const GdkRectangle *rect,
-                            const GdkEvent     *event);
+                            guint32             timestamp);
 
 gboolean meta_window_titlebar_is_onscreen    (MetaWindow *window);
 void     meta_window_shove_titlebar_onscreen (MetaWindow *window);
@@ -717,6 +714,17 @@ MetaFrameType meta_window_get_frame_type (MetaWindow *window);
 gboolean meta_window_updates_are_frozen (MetaWindow *window);
 
 void meta_window_update_shape_region (MetaWindow *window);
+
+void meta_window_reframe (MetaWindow *window);
+
+void meta_window_add_pending_unmap (MetaWindow *window,
+                                    gulong      serial,
+                                    const char *reason);
+
+gboolean meta_window_remove_pending_unmap (MetaWindow *window,
+                                           gulong      serial);
+
+pid_t meta_window_get_client_pid (MetaWindow *self);
 
 G_END_DECLS
 

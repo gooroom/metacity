@@ -34,6 +34,8 @@
 #include <cairo-xlib.h>
 #include <libmetacity/meta-theme.h>
 
+#define META_DEFAULT_ICON_NAME "window"
+
 struct _MetaUI
 {
   Display *xdisplay;
@@ -409,16 +411,6 @@ meta_ui_get_scale (MetaUI *ui)
 }
 
 void
-meta_ui_get_frame_mask (MetaUI  *ui,
-                        Window   frame_xwindow,
-                        guint    width,
-                        guint    height,
-                        cairo_t *cr)
-{
-  meta_frames_get_mask (ui->frames, frame_xwindow, width, height, cr);
-}
-
-void
 meta_ui_get_frame_borders (MetaUI *ui,
                            Window frame_xwindow,
                            MetaFrameBorders *borders)
@@ -629,9 +621,9 @@ meta_ui_window_menu_new  (MetaUI             *ui,
 void
 meta_ui_window_menu_popup (MetaWindowMenu     *menu,
                            const GdkRectangle *rect,
-                           const GdkEvent     *event)
+                           guint32             timestamp)
 {
-  meta_window_menu_popup (menu, rect, event);
+  meta_window_menu_popup (menu, rect, timestamp);
 }
 
 void
@@ -690,18 +682,6 @@ meta_gdk_pixbuf_get_from_pixmap (Pixmap       xpixmap,
   return retval;
 }
 
-void
-meta_ui_push_delay_exposes (MetaUI *ui)
-{
-  meta_frames_push_delay_exposes (ui->frames);
-}
-
-void
-meta_ui_pop_delay_exposes  (MetaUI *ui)
-{
-  meta_frames_pop_delay_exposes (ui->frames);
-}
-
 static GdkPixbuf *
 load_default_window_icon (int size)
 {
@@ -717,13 +697,14 @@ load_default_window_icon (int size)
 }
 
 GdkPixbuf*
-meta_ui_get_default_window_icon (MetaUI *ui)
+meta_ui_get_default_window_icon (MetaUI *ui,
+                                 int     ideal_size)
 {
   static GdkPixbuf *default_icon = NULL;
 
   if (default_icon == NULL)
     {
-      default_icon = load_default_window_icon (META_ICON_WIDTH);
+      default_icon = load_default_window_icon (ideal_size);
       g_assert (default_icon);
     }
 
@@ -733,13 +714,14 @@ meta_ui_get_default_window_icon (MetaUI *ui)
 }
 
 GdkPixbuf*
-meta_ui_get_default_mini_icon (MetaUI *ui)
+meta_ui_get_default_mini_icon (MetaUI *ui,
+                               int     ideal_size)
 {
   static GdkPixbuf *default_icon = NULL;
 
   if (default_icon == NULL)
     {
-      default_icon = load_default_window_icon (META_MINI_ICON_WIDTH);
+      default_icon = load_default_window_icon (ideal_size);
       g_assert (default_icon);
     }
 

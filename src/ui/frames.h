@@ -34,16 +34,9 @@ typedef enum
   META_FRAME_CONTROL_TITLE,
   META_FRAME_CONTROL_DELETE,
   META_FRAME_CONTROL_MENU,
-  META_FRAME_CONTROL_APPMENU,
   META_FRAME_CONTROL_MINIMIZE,
   META_FRAME_CONTROL_MAXIMIZE,
   META_FRAME_CONTROL_UNMAXIMIZE,
-  META_FRAME_CONTROL_SHADE,
-  META_FRAME_CONTROL_UNSHADE,
-  META_FRAME_CONTROL_ABOVE,
-  META_FRAME_CONTROL_UNABOVE,
-  META_FRAME_CONTROL_STICK,
-  META_FRAME_CONTROL_UNSTICK,
   META_FRAME_CONTROL_RESIZE_SE,
   META_FRAME_CONTROL_RESIZE_S,
   META_FRAME_CONTROL_RESIZE_SW,
@@ -111,12 +104,6 @@ cairo_region_t *meta_frames_get_frame_bounds (MetaFrames *frames,
                                               int         window_width,
                                               int         window_height);
 
-void meta_frames_get_mask (MetaFrames *frames,
-                           Window      xwindow,
-                           guint       width,
-                           guint       height,
-                           cairo_t    *cr);
-
 void meta_frames_move_resize_frame (MetaFrames *frames,
 				    Window      xwindow,
 				    int         x,
@@ -127,9 +114,6 @@ void meta_frames_queue_draw (MetaFrames *frames,
                              Window      xwindow);
 
 void meta_frames_notify_menu_hide (MetaFrames *frames);
-
-void meta_frames_push_delay_exposes (MetaFrames *frames);
-void meta_frames_pop_delay_exposes  (MetaFrames *frames);
 
 void meta_frames_composited_changed (MetaFrames *frames);
 

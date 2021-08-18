@@ -4,7 +4,7 @@
 #include "config.h"
 
 #include "meta-enum-types.h"
-#include "./meta-theme.h"
+#include "meta-theme.h"
 
 GType
 meta_theme_error_get_type (void)

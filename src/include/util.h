@@ -24,6 +24,7 @@
 #define META_UTIL_H
 
 #include <glib.h>
+#include <X11/extensions/Xfixes.h>
 
 G_BEGIN_DECLS
 
@@ -49,7 +50,8 @@ typedef enum
   META_DEBUG_SHAPES = 1 << 17,
   META_DEBUG_EDGE_RESISTANCE = 1 << 18,
   META_DEBUG_VERBOSE = 1 << 19,
-  META_DEBUG_VULKAN = 1 << 20
+  META_DEBUG_VULKAN = 1 << 20,
+  META_DEBUG_DAMAGE_REGION = 1 << 21
 } MetaDebugFlags;
 
 void meta_init_debug (void);
@@ -95,6 +97,10 @@ GPid meta_show_dialog (const char *type,
                        const int transient_for,
                        GSList *columns,
                        GSList *entries);
+
+gboolean meta_xserver_region_equal (Display       *xdisplay,
+                                    XserverRegion  region1,
+                                    XserverRegion  region2);
 
 G_END_DECLS
 

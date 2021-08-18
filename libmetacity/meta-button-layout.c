@@ -25,62 +25,14 @@ type_from_string (const gchar *str)
 {
   if (g_strcmp0 (str, "menu") == 0)
     return META_BUTTON_TYPE_MENU;
-  else if (g_strcmp0 (str, "appmenu") == 0)
-    return META_BUTTON_TYPE_APPMENU;
   else if (g_strcmp0 (str, "minimize") == 0)
     return META_BUTTON_TYPE_MINIMIZE;
   else if (g_strcmp0 (str, "maximize") == 0)
     return META_BUTTON_TYPE_MAXIMIZE;
   else if (g_strcmp0 (str, "close") == 0)
     return META_BUTTON_TYPE_CLOSE;
-  else if (g_strcmp0 (str, "shade") == 0)
-    return META_BUTTON_TYPE_SHADE;
-  else if (g_strcmp0 (str, "unshade") == 0)
-    return META_BUTTON_TYPE_UNSHADE;
-  else if (g_strcmp0 (str, "above") == 0)
-    return META_BUTTON_TYPE_ABOVE;
-  else if (g_strcmp0 (str, "unabove") == 0)
-    return META_BUTTON_TYPE_UNABOVE;
-  else if (g_strcmp0 (str, "stick") == 0)
-    return META_BUTTON_TYPE_STICK;
-  else if (g_strcmp0 (str, "unstick") == 0)
-    return META_BUTTON_TYPE_UNSTICK;
   else if (g_strcmp0 (str, "spacer") == 0)
     return META_BUTTON_TYPE_SPACER;
-
-  return META_BUTTON_TYPE_LAST;
-}
-
-static MetaButtonType
-get_opposite_type (MetaButtonType type)
-{
-  switch (type)
-    {
-      case META_BUTTON_TYPE_SHADE:
-        return META_BUTTON_TYPE_UNSHADE;
-      case META_BUTTON_TYPE_UNSHADE:
-        return META_BUTTON_TYPE_SHADE;
-
-      case META_BUTTON_TYPE_ABOVE:
-        return META_BUTTON_TYPE_UNABOVE;
-      case META_BUTTON_TYPE_UNABOVE:
-        return META_BUTTON_TYPE_ABOVE;
-
-      case META_BUTTON_TYPE_STICK:
-        return META_BUTTON_TYPE_UNSTICK;
-      case META_BUTTON_TYPE_UNSTICK:
-        return META_BUTTON_TYPE_STICK;
-
-      case META_BUTTON_TYPE_MENU:
-      case META_BUTTON_TYPE_APPMENU:
-      case META_BUTTON_TYPE_MINIMIZE:
-      case META_BUTTON_TYPE_MAXIMIZE:
-      case META_BUTTON_TYPE_CLOSE:
-      case META_BUTTON_TYPE_SPACER:
-      case META_BUTTON_TYPE_LAST:
-      default:
-        break;
-    }
 
   return META_BUTTON_TYPE_LAST;
 }
@@ -109,10 +61,7 @@ string_to_buttons (const gchar *str,
 
       if (type != META_BUTTON_TYPE_LAST)
         {
-          if (get_opposite_type (type) != META_BUTTON_TYPE_LAST)
-            *n_buttons += 2;
-          else
-            *n_buttons += 1;
+          *n_buttons += 1;
         }
       else
         {
@@ -146,13 +95,6 @@ string_to_buttons (const gchar *str,
           tmp.visible = TRUE;
 
           retval[index++] = tmp;
-
-          type = get_opposite_type (type);
-          if (type != META_BUTTON_TYPE_LAST)
-            {
-              tmp.type = type;
-              retval[index++] = tmp;
-            }
         }
     }
 

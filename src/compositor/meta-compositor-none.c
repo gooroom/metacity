@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Alberts Muktupāvels
+ * Copyright (C) 2017-2019 Alberts Muktupāvels
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -33,55 +33,11 @@ meta_compositor_none_manage (MetaCompositor  *compositor,
   return TRUE;
 }
 
-static void
+static MetaSurface *
 meta_compositor_none_add_window (MetaCompositor *compositor,
                                  MetaWindow     *window)
 {
-}
-
-static void
-meta_compositor_none_remove_window (MetaCompositor *compositor,
-                                    MetaWindow     *window)
-{
-}
-
-static void
-meta_compositor_none_show_window (MetaCompositor *compositor,
-                                  MetaWindow     *window,
-                                  MetaEffectType  effect)
-{
-}
-
-static void
-meta_compositor_none_hide_window (MetaCompositor *compositor,
-                                  MetaWindow     *window,
-                                  MetaEffectType  effect)
-{
-}
-
-static void
-meta_compositor_none_window_opacity_changed (MetaCompositor *compositor,
-                                             MetaWindow     *window)
-{
-}
-
-static void
-meta_compositor_none_window_opaque_region_changed (MetaCompositor *compositor,
-                                                   MetaWindow     *window)
-{
-}
-
-static void
-meta_compositor_none_window_shape_region_changed (MetaCompositor *compositor,
-                                                  MetaWindow     *window)
-{
-}
-
-static void
-meta_compositor_none_set_updates_frozen (MetaCompositor *compositor,
-                                         MetaWindow     *window,
-                                         gboolean        updates_frozen)
-{
+  return NULL;
 }
 
 static void
@@ -91,44 +47,14 @@ meta_compositor_none_process_event (MetaCompositor *compositor,
 {
 }
 
-static cairo_surface_t *
-meta_compositor_none_get_window_surface (MetaCompositor *compositor,
-                                         MetaWindow     *window)
-{
-  return NULL;
-}
-
-static void
-meta_compositor_none_maximize_window (MetaCompositor *compositor,
-                                      MetaWindow     *window)
-{
-}
-
-static void
-meta_compositor_none_unmaximize_window (MetaCompositor *compositor,
-                                        MetaWindow     *window)
-{
-}
-
 static void
 meta_compositor_none_sync_screen_size (MetaCompositor *compositor)
 {
 }
 
 static void
-meta_compositor_none_sync_stack (MetaCompositor *compositor,
-                                 GList          *stack)
-{
-}
-
-static void
-meta_compositor_none_sync_window_geometry (MetaCompositor *compositor,
-                                           MetaWindow     *window)
-{
-}
-
-static void
-meta_compositor_none_redraw (MetaCompositor *compositor)
+meta_compositor_none_redraw (MetaCompositor *compositor,
+                             XserverRegion   all_damage)
 {
 }
 
@@ -141,24 +67,22 @@ meta_compositor_none_class_init (MetaCompositorNoneClass *none_class)
 
   compositor_class->manage = meta_compositor_none_manage;
   compositor_class->add_window = meta_compositor_none_add_window;
-  compositor_class->remove_window = meta_compositor_none_remove_window;
-  compositor_class->show_window = meta_compositor_none_show_window;
-  compositor_class->hide_window = meta_compositor_none_hide_window;
-  compositor_class->window_opacity_changed = meta_compositor_none_window_opacity_changed;
-  compositor_class->window_opaque_region_changed = meta_compositor_none_window_opaque_region_changed;
-  compositor_class->window_shape_region_changed = meta_compositor_none_window_shape_region_changed;
-  compositor_class->set_updates_frozen = meta_compositor_none_set_updates_frozen;
   compositor_class->process_event = meta_compositor_none_process_event;
-  compositor_class->get_window_surface = meta_compositor_none_get_window_surface;
-  compositor_class->maximize_window = meta_compositor_none_maximize_window;
-  compositor_class->unmaximize_window = meta_compositor_none_unmaximize_window;
   compositor_class->sync_screen_size = meta_compositor_none_sync_screen_size;
-  compositor_class->sync_stack = meta_compositor_none_sync_stack;
-  compositor_class->sync_window_geometry = meta_compositor_none_sync_window_geometry;
   compositor_class->redraw = meta_compositor_none_redraw;
 }
 
 static void
 meta_compositor_none_init (MetaCompositorNone *none)
 {
+  meta_compositor_set_composited (META_COMPOSITOR (none), FALSE);
+}
+
+MetaCompositor *
+meta_compositor_none_new (MetaDisplay  *display,
+                          GError      **error)
+{
+  return g_initable_new (META_TYPE_COMPOSITOR_NONE, NULL, error,
+                         "display", display,
+                         NULL);
 }

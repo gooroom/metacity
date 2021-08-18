@@ -96,22 +96,12 @@ struct _MetaFrames
   guint        tooltip_timeout;
   MetaUIFrame *last_motion_frame;
 
-  gint         expose_delay_count;
-
   gint         invalidate_cache_timeout_id;
   GList       *invalidate_frames;
   GHashTable  *cache;
 };
 
 G_DEFINE_TYPE (MetaFrames, meta_frames, GTK_TYPE_WINDOW)
-
-static void
-process_all_updates (void)
-{
-  G_GNUC_BEGIN_IGNORE_DEPRECATIONS
-  gdk_window_process_all_updates ();
-  G_GNUC_END_IGNORE_DEPRECATIONS
-}
 
 static void
 get_client_rect (MetaFrameGeometry *fgeom,
@@ -176,32 +166,11 @@ get_control (MetaFrames  *frames,
           case META_BUTTON_TYPE_MENU:
             return META_FRAME_CONTROL_MENU;
 
-          case META_BUTTON_TYPE_APPMENU:
-            return META_FRAME_CONTROL_APPMENU;
-
           case META_BUTTON_TYPE_MAXIMIZE:
             if (flags & META_FRAME_MAXIMIZED)
               return META_FRAME_CONTROL_UNMAXIMIZE;
             else
               return META_FRAME_CONTROL_MAXIMIZE;
-
-          case META_BUTTON_TYPE_SHADE:
-            return META_FRAME_CONTROL_SHADE;
-
-          case META_BUTTON_TYPE_UNSHADE:
-            return META_FRAME_CONTROL_UNSHADE;
-
-          case META_BUTTON_TYPE_ABOVE:
-            return META_FRAME_CONTROL_ABOVE;
-
-          case META_BUTTON_TYPE_UNABOVE:
-            return META_FRAME_CONTROL_UNABOVE;
-
-          case META_BUTTON_TYPE_STICK:
-            return META_FRAME_CONTROL_STICK;
-
-          case META_BUTTON_TYPE_UNSTICK:
-            return META_FRAME_CONTROL_UNSTICK;
 
           case META_BUTTON_TYPE_SPACER:
           case META_BUTTON_TYPE_LAST:
@@ -319,10 +288,6 @@ get_control_rect (MetaFrames        *frames,
         type = META_BUTTON_TYPE_MENU;
         break;
 
-      case META_FRAME_CONTROL_APPMENU:
-        type = META_BUTTON_TYPE_APPMENU;
-        break;
-
       case META_FRAME_CONTROL_MINIMIZE:
         type = META_BUTTON_TYPE_MINIMIZE;
         break;
@@ -330,30 +295,6 @@ get_control_rect (MetaFrames        *frames,
       case META_FRAME_CONTROL_MAXIMIZE:
       case META_FRAME_CONTROL_UNMAXIMIZE:
         type = META_BUTTON_TYPE_MAXIMIZE;
-        break;
-
-      case META_FRAME_CONTROL_SHADE:
-        type = META_BUTTON_TYPE_SHADE;
-        break;
-
-      case META_FRAME_CONTROL_UNSHADE:
-        type = META_BUTTON_TYPE_UNSHADE;
-        break;
-
-      case META_FRAME_CONTROL_ABOVE:
-        type = META_BUTTON_TYPE_ABOVE;
-        break;
-
-      case META_FRAME_CONTROL_UNABOVE:
-        type = META_BUTTON_TYPE_UNABOVE;
-        break;
-
-      case META_FRAME_CONTROL_STICK:
-        type = META_BUTTON_TYPE_STICK;
-        break;
-
-      case META_FRAME_CONTROL_UNSTICK:
-        type = META_BUTTON_TYPE_UNSTICK;
         break;
 
       case META_FRAME_CONTROL_CLIENT_AREA:
@@ -449,8 +390,6 @@ meta_frames_init (MetaFrames *frames)
   frames->frames = g_hash_table_new (unsigned_long_hash, unsigned_long_equal);
 
   frames->tooltip_timeout = 0;
-
-  frames->expose_delay_count = 0;
 
   frames->invalidate_cache_timeout_id = 0;
   frames->invalidate_frames = NULL;
@@ -777,7 +716,6 @@ meta_frames_manage_window (MetaFrames *frames,
 
   frame->xwindow = xwindow;
   frame->title = NULL;
-  frame->expose_delayed = FALSE;
   frame->shape_applied = FALSE;
   frame->ignore_leave_notify = FALSE;
   frame->prelit_control = META_FRAME_CONTROL_NONE;
@@ -1284,7 +1222,9 @@ meta_frames_repaint_frame (MetaFrames *frames,
   /* repaint everything, so the other frame don't
    * lag behind if they are exposed
    */
-  process_all_updates ();
+  G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+  gdk_window_process_all_updates ();
+  G_GNUC_END_IGNORE_DEPRECATIONS
 }
 
 static void
@@ -1317,9 +1257,6 @@ show_tip_now (MetaFrames *frames)
     case META_FRAME_CONTROL_MENU:
       tiptext = _("Window Menu");
       break;
-    case META_FRAME_CONTROL_APPMENU:
-      tiptext = _("Window App Menu");
-      break;
     case META_FRAME_CONTROL_MINIMIZE:
       tiptext = _("Minimize Window");
       break;
@@ -1328,24 +1265,6 @@ show_tip_now (MetaFrames *frames)
       break;
     case META_FRAME_CONTROL_UNMAXIMIZE:
       tiptext = _("Restore Window");
-      break;
-    case META_FRAME_CONTROL_SHADE:
-      tiptext = _("Roll Up Window");
-      break;
-    case META_FRAME_CONTROL_UNSHADE:
-      tiptext = _("Unroll Window");
-      break;
-    case META_FRAME_CONTROL_ABOVE:
-      tiptext = _("Keep Window On Top");
-      break;
-    case META_FRAME_CONTROL_UNABOVE:
-      tiptext = _("Remove Window From Top");
-      break;
-    case META_FRAME_CONTROL_STICK:
-      tiptext = _("Always On Visible Workspace");
-      break;
-    case META_FRAME_CONTROL_UNSTICK:
-      tiptext = _("Put Window On Only One Workspace");
       break;
     case META_FRAME_CONTROL_RESIZE_SE:
       break;
@@ -1505,16 +1424,9 @@ update_prelit_control (MetaFrames       *frames,
       case META_FRAME_CONTROL_TITLE:
       case META_FRAME_CONTROL_DELETE:
       case META_FRAME_CONTROL_MENU:
-      case META_FRAME_CONTROL_APPMENU:
       case META_FRAME_CONTROL_MINIMIZE:
       case META_FRAME_CONTROL_MAXIMIZE:
       case META_FRAME_CONTROL_UNMAXIMIZE:
-      case META_FRAME_CONTROL_SHADE:
-      case META_FRAME_CONTROL_UNSHADE:
-      case META_FRAME_CONTROL_ABOVE:
-      case META_FRAME_CONTROL_UNABOVE:
-      case META_FRAME_CONTROL_STICK:
-      case META_FRAME_CONTROL_UNSTICK:
       default:
         cursor = META_CURSOR_DEFAULT;
         break;
@@ -1526,16 +1438,9 @@ update_prelit_control (MetaFrames       *frames,
   switch (control)
     {
       case META_FRAME_CONTROL_MENU:
-      case META_FRAME_CONTROL_APPMENU:
       case META_FRAME_CONTROL_MINIMIZE:
       case META_FRAME_CONTROL_MAXIMIZE:
       case META_FRAME_CONTROL_DELETE:
-      case META_FRAME_CONTROL_SHADE:
-      case META_FRAME_CONTROL_UNSHADE:
-      case META_FRAME_CONTROL_ABOVE:
-      case META_FRAME_CONTROL_UNABOVE:
-      case META_FRAME_CONTROL_STICK:
-      case META_FRAME_CONTROL_UNSTICK:
       case META_FRAME_CONTROL_UNMAXIMIZE:
         /* leave control set */
         break;
@@ -1663,13 +1568,13 @@ meta_frame_titlebar_event (MetaFrames     *frames,
       {
         GdkRectangle rect;
 
-        rect.x = event->x;
-        rect.y = event->y;
+        rect.x = event->x_root;
+        rect.y = event->y_root;
         rect.width = 0;
         rect.height = 0;
 
         meta_core_show_window_menu (frames->xdisplay, frame->xwindow,
-                                    &rect, event);
+                                    &rect, event->time);
       }
       break;
 
@@ -1767,12 +1672,6 @@ meta_frames_button_press_event (GtkWidget      *widget,
        control == META_FRAME_CONTROL_UNMAXIMIZE ||
        control == META_FRAME_CONTROL_MINIMIZE ||
        control == META_FRAME_CONTROL_DELETE ||
-       control == META_FRAME_CONTROL_SHADE ||
-       control == META_FRAME_CONTROL_UNSHADE ||
-       control == META_FRAME_CONTROL_ABOVE ||
-       control == META_FRAME_CONTROL_UNABOVE ||
-       control == META_FRAME_CONTROL_STICK ||
-       control == META_FRAME_CONTROL_UNSTICK ||
        control == META_FRAME_CONTROL_MENU))
     {
       MetaGrabOp op = META_GRAB_OP_NONE;
@@ -1787,20 +1686,6 @@ meta_frames_button_press_event (GtkWidget      *widget,
         op = META_GRAB_OP_CLICKING_DELETE;
       else if (control == META_FRAME_CONTROL_MENU)
         op = META_GRAB_OP_CLICKING_MENU;
-      else if (control == META_FRAME_CONTROL_APPMENU)
-        op = META_GRAB_OP_CLICKING_APPMENU;
-      else if (control == META_FRAME_CONTROL_SHADE)
-        op = META_GRAB_OP_CLICKING_SHADE;
-      else if (control == META_FRAME_CONTROL_UNSHADE)
-        op = META_GRAB_OP_CLICKING_UNSHADE;
-      else if (control == META_FRAME_CONTROL_ABOVE)
-        op = META_GRAB_OP_CLICKING_ABOVE;
-      else if (control == META_FRAME_CONTROL_UNABOVE)
-        op = META_GRAB_OP_CLICKING_UNABOVE;
-      else if (control == META_FRAME_CONTROL_STICK)
-        op = META_GRAB_OP_CLICKING_STICK;
-      else if (control == META_FRAME_CONTROL_UNSTICK)
-        op = META_GRAB_OP_CLICKING_UNSTICK;
       else
         g_assert_not_reached ();
 
@@ -1834,10 +1719,14 @@ meta_frames_button_press_event (GtkWidget      *widget,
               return FALSE;
             }
 
+          /* convert to root coords */
+          rect.x += event->x_root - event->x;
+          rect.y += event->y_root - event->y;
+
           frame->ignore_leave_notify = TRUE;
           meta_core_show_window_menu (frames->xdisplay,
                                       frame->xwindow,
-                                      &rect, event);
+                                      &rect, event->time);
         }
     }
   else if (event->button == 1 &&
@@ -2011,49 +1900,6 @@ meta_frames_button_release_event    (GtkWidget           *widget,
           break;
 
         case META_GRAB_OP_CLICKING_MENU:
-        case META_GRAB_OP_CLICKING_APPMENU:
-          meta_core_end_grab_op (frames->xdisplay, event->time);
-          break;
-
-        case META_GRAB_OP_CLICKING_SHADE:
-          if (control == META_FRAME_CONTROL_SHADE)
-            meta_core_shade (frames->xdisplay, frame->xwindow, event->time);
-
-          meta_core_end_grab_op (frames->xdisplay, event->time);
-          break;
-
-        case META_GRAB_OP_CLICKING_UNSHADE:
-          if (control == META_FRAME_CONTROL_UNSHADE)
-            meta_core_unshade (frames->xdisplay, frame->xwindow, event->time);
-
-          meta_core_end_grab_op (frames->xdisplay, event->time);
-          break;
-
-        case META_GRAB_OP_CLICKING_ABOVE:
-          if (control == META_FRAME_CONTROL_ABOVE)
-            meta_core_make_above (frames->xdisplay, frame->xwindow);
-
-          meta_core_end_grab_op (frames->xdisplay, event->time);
-          break;
-
-        case META_GRAB_OP_CLICKING_UNABOVE:
-          if (control == META_FRAME_CONTROL_UNABOVE)
-            meta_core_unmake_above (frames->xdisplay, frame->xwindow);
-
-          meta_core_end_grab_op (frames->xdisplay, event->time);
-          break;
-
-        case META_GRAB_OP_CLICKING_STICK:
-          if (control == META_FRAME_CONTROL_STICK)
-            meta_core_stick (frames->xdisplay, frame->xwindow);
-
-          meta_core_end_grab_op (frames->xdisplay, event->time);
-          break;
-
-        case META_GRAB_OP_CLICKING_UNSTICK:
-          if (control == META_FRAME_CONTROL_UNSTICK)
-            meta_core_unstick (frames->xdisplay, frame->xwindow);
-
           meta_core_end_grab_op (frames->xdisplay, event->time);
           break;
 
@@ -2124,17 +1970,10 @@ meta_frames_motion_notify_event     (GtkWidget           *widget,
   switch (grab_op)
     {
     case META_GRAB_OP_CLICKING_MENU:
-    case META_GRAB_OP_CLICKING_APPMENU:
     case META_GRAB_OP_CLICKING_DELETE:
     case META_GRAB_OP_CLICKING_MINIMIZE:
     case META_GRAB_OP_CLICKING_MAXIMIZE:
     case META_GRAB_OP_CLICKING_UNMAXIMIZE:
-    case META_GRAB_OP_CLICKING_SHADE:
-    case META_GRAB_OP_CLICKING_UNSHADE:
-    case META_GRAB_OP_CLICKING_ABOVE:
-    case META_GRAB_OP_CLICKING_UNABOVE:
-    case META_GRAB_OP_CLICKING_STICK:
-    case META_GRAB_OP_CLICKING_UNSTICK:
       {
         MetaFrameControl control;
         int x, y;
@@ -2148,8 +1987,6 @@ meta_frames_motion_notify_event     (GtkWidget           *widget,
         control = get_control (frames, frame, x, y);
         if (! ((control == META_FRAME_CONTROL_MENU &&
                 grab_op == META_GRAB_OP_CLICKING_MENU) ||
-               (control == META_FRAME_CONTROL_APPMENU &&
-                grab_op == META_GRAB_OP_CLICKING_APPMENU) ||
                (control == META_FRAME_CONTROL_DELETE &&
                 grab_op == META_GRAB_OP_CLICKING_DELETE) ||
                (control == META_FRAME_CONTROL_MINIMIZE &&
@@ -2157,19 +1994,7 @@ meta_frames_motion_notify_event     (GtkWidget           *widget,
                ((control == META_FRAME_CONTROL_MAXIMIZE ||
                  control == META_FRAME_CONTROL_UNMAXIMIZE) &&
                 (grab_op == META_GRAB_OP_CLICKING_MAXIMIZE ||
-                 grab_op == META_GRAB_OP_CLICKING_UNMAXIMIZE)) ||
-               (control == META_FRAME_CONTROL_SHADE &&
-                grab_op == META_GRAB_OP_CLICKING_SHADE) ||
-               (control == META_FRAME_CONTROL_UNSHADE &&
-                grab_op == META_GRAB_OP_CLICKING_UNSHADE) ||
-               (control == META_FRAME_CONTROL_ABOVE &&
-                grab_op == META_GRAB_OP_CLICKING_ABOVE) ||
-               (control == META_FRAME_CONTROL_UNABOVE &&
-                grab_op == META_GRAB_OP_CLICKING_UNABOVE) ||
-               (control == META_FRAME_CONTROL_STICK &&
-                grab_op == META_GRAB_OP_CLICKING_STICK) ||
-               (control == META_FRAME_CONTROL_UNSTICK &&
-                grab_op == META_GRAB_OP_CLICKING_UNSTICK)))
+                 grab_op == META_GRAB_OP_CLICKING_UNMAXIMIZE))))
            control = META_FRAME_CONTROL_NONE;
 
         /* Update prelit control and cursor */
@@ -2246,13 +2071,11 @@ generate_pixmap (MetaFrames            *frames,
     return NULL;
 
   result = gdk_window_create_similar_surface (frame->window,
-                                              CAIRO_CONTENT_COLOR,
+                                              CAIRO_CONTENT_COLOR_ALPHA,
                                               rect->width, rect->height);
 
   cr = cairo_create (result);
   cairo_translate (cr, -rect->x, -rect->y);
-
-  cairo_paint (cr);
 
   meta_frames_paint (frames, frame, cr);
 
@@ -2407,28 +2230,6 @@ cached_pixels_draw (CachedPixels   *pixels,
     }
 }
 
-void
-meta_frames_get_mask (MetaFrames *frames,
-                      Window      xwindow,
-                      guint       width,
-                      guint       height,
-                      cairo_t    *cr)
-{
-  MetaUIFrame *frame;
-
-  frame = meta_frames_lookup_window (frames, xwindow);
-
-  if (frame == NULL)
-    return;
-
-  cairo_push_group (cr);
-
-  meta_frames_paint (frames, frame, cr);
-
-  cairo_pop_group_to_source (cr);
-  cairo_paint (cr);
-}
-
 /* XXX -- this is disgusting. Find a better approach here.
  * Use multiple widgets? */
 static MetaUIFrame *
@@ -2463,13 +2264,6 @@ meta_frames_draw (GtkWidget *widget,
   frame = find_frame_to_draw (frames, cr);
   if (frame == NULL)
     return FALSE;
-
-  if (frames->expose_delay_count > 0)
-    {
-      /* Redraw this entire frame later */
-      frame->expose_delayed = TRUE;
-      return TRUE;
-    }
 
   populate_cache (frames, frame);
 
@@ -2559,14 +2353,6 @@ update_button_state (MetaButtonType type,
       else
         state = META_BUTTON_STATE_PRELIGHT;
     }
-  else if (control == META_FRAME_CONTROL_APPMENU &&
-           type == META_BUTTON_TYPE_APPMENU)
-    {
-      if (grab_op == META_GRAB_OP_CLICKING_MENU)
-        state = META_BUTTON_STATE_PRESSED;
-      else
-        state = META_BUTTON_STATE_PRELIGHT;
-    }
   else if (control == META_FRAME_CONTROL_MINIMIZE &&
            type == META_BUTTON_TYPE_MINIMIZE)
     {
@@ -2587,54 +2373,6 @@ update_button_state (MetaButtonType type,
            type == META_BUTTON_TYPE_MAXIMIZE)
     {
       if (grab_op == META_GRAB_OP_CLICKING_UNMAXIMIZE)
-        state = META_BUTTON_STATE_PRESSED;
-      else
-        state = META_BUTTON_STATE_PRELIGHT;
-    }
-  else if (control == META_FRAME_CONTROL_SHADE &&
-           type == META_BUTTON_TYPE_SHADE)
-    {
-      if (grab_op == META_GRAB_OP_CLICKING_SHADE)
-        state = META_BUTTON_STATE_PRESSED;
-      else
-        state = META_BUTTON_STATE_PRELIGHT;
-    }
-  else if (control == META_FRAME_CONTROL_UNSHADE &&
-           type == META_BUTTON_TYPE_UNSHADE)
-    {
-      if (grab_op == META_GRAB_OP_CLICKING_UNSHADE)
-        state = META_BUTTON_STATE_PRESSED;
-      else
-        state = META_BUTTON_STATE_PRELIGHT;
-    }
-  else if (control == META_FRAME_CONTROL_ABOVE &&
-           type == META_BUTTON_TYPE_ABOVE)
-    {
-      if (grab_op == META_GRAB_OP_CLICKING_ABOVE)
-        state = META_BUTTON_STATE_PRESSED;
-      else
-        state = META_BUTTON_STATE_PRELIGHT;
-    }
-  else if (control == META_FRAME_CONTROL_UNABOVE &&
-           type == META_BUTTON_TYPE_UNABOVE)
-    {
-      if (grab_op == META_GRAB_OP_CLICKING_UNABOVE)
-        state = META_BUTTON_STATE_PRESSED;
-      else
-        state = META_BUTTON_STATE_PRELIGHT;
-    }
-  else if (control == META_FRAME_CONTROL_STICK &&
-           type == META_BUTTON_TYPE_STICK)
-    {
-      if (grab_op == META_GRAB_OP_CLICKING_STICK)
-        state = META_BUTTON_STATE_PRESSED;
-      else
-        state = META_BUTTON_STATE_PRELIGHT;
-    }
-  else if (control == META_FRAME_CONTROL_UNSTICK &&
-           type == META_BUTTON_TYPE_UNSTICK)
-    {
-      if (grab_op == META_GRAB_OP_CLICKING_UNSTICK)
         state = META_BUTTON_STATE_PRESSED;
       else
         state = META_BUTTON_STATE_PRELIGHT;
@@ -2729,50 +2467,6 @@ meta_frames_leave_notify_event      (GtkWidget           *widget,
   clear_tip (frames);
 
   return TRUE;
-}
-
-void
-meta_frames_push_delay_exposes (MetaFrames *frames)
-{
-  if (frames->expose_delay_count == 0)
-    {
-      /* Make sure we've repainted things */
-      process_all_updates ();
-      XFlush (frames->xdisplay);
-    }
-
-  frames->expose_delay_count += 1;
-}
-
-static void
-queue_pending_exposes_func (gpointer key, gpointer value, gpointer data)
-{
-  MetaUIFrame *frame;
-  MetaFrames *frames;
-
-  frames = META_FRAMES (data);
-  frame = value;
-
-  if (frame->expose_delayed)
-    {
-      invalidate_whole_window (frames, frame);
-      frame->expose_delayed = FALSE;
-    }
-}
-
-void
-meta_frames_pop_delay_exposes  (MetaFrames *frames)
-{
-  g_return_if_fail (frames->expose_delay_count > 0);
-
-  frames->expose_delay_count -= 1;
-
-  if (frames->expose_delay_count == 0)
-    {
-      g_hash_table_foreach (frames->frames,
-                            queue_pending_exposes_func,
-                            frames);
-    }
 }
 
 static void

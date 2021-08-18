@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Alberts Muktupāvels
+ * Copyright (C) 2017-2019 Alberts Muktupāvels
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,13 +17,13 @@
 
 #include "config.h"
 
-#ifdef HAVE_VULKAN
 #define VK_USE_PLATFORM_XLIB_KHR
 #include <vulkan/vulkan.h>
-#endif
 
 #include "display-private.h"
 #include "meta-compositor-vulkan.h"
+#include "meta-enum-types.h"
+#include "meta-surface-vulkan.h"
 #include "prefs.h"
 #include "screen.h"
 #include "util.h"
@@ -35,7 +35,6 @@ struct _MetaCompositorVulkan
   gboolean                  lunarg_validation_layer;
   gboolean                  debug_report_extension;
 
-#ifdef HAVE_VULKAN
   VkInstance                instance;
 
   VkDebugReportCallbackEXT  debug_callback;
@@ -72,12 +71,10 @@ struct _MetaCompositorVulkan
 
   uint32_t                  n_command_buffers;
   VkCommandBuffer          *command_buffers;
-#endif
 };
 
 G_DEFINE_TYPE (MetaCompositorVulkan, meta_compositor_vulkan, META_TYPE_COMPOSITOR)
 
-#ifdef HAVE_VULKAN
 static void
 destroy_command_buffers (MetaCompositorVulkan *vulkan)
 {
@@ -814,7 +811,9 @@ device_type_to_string (VkPhysicalDeviceType type)
         return "cpu";
         break;
 
+#if VK_HEADER_VERSION < 140
       case VK_PHYSICAL_DEVICE_TYPE_RANGE_SIZE:
+#endif
       case VK_PHYSICAL_DEVICE_TYPE_MAX_ENUM:
       default:
         break;
@@ -1124,12 +1123,10 @@ create_semaphore (MetaCompositorVulkan  *vulkan,
 
   return TRUE;
 }
-#endif
 
 static void
 meta_compositor_vulkan_finalize (GObject *object)
 {
-#ifdef HAVE_VULKAN
   MetaCompositorVulkan *vulkan;
 
   vulkan = META_COMPOSITOR_VULKAN (object);
@@ -1183,38 +1180,46 @@ meta_compositor_vulkan_finalize (GObject *object)
       vkDestroyInstance (vulkan->instance, NULL);
       vulkan->instance = VK_NULL_HANDLE;
     }
-#endif
 
   G_OBJECT_CLASS (meta_compositor_vulkan_parent_class)->finalize (object);
 }
 
-#ifdef HAVE_VULKAN
 static gboolean
 not_implemented_cb (MetaCompositorVulkan *vulkan)
 {
-  gboolean cm;
+  MetaDisplay *display;
+  MetaCompositorType type;
+  GEnumClass *enum_class;
+  GEnumValue *enum_value;
 
-  cm = meta_prefs_get_compositing_manager ();
+  display = meta_compositor_get_display (META_COMPOSITOR (vulkan));
+  type = meta_prefs_get_compositor ();
 
-  g_warning ("MetaCompositorVulkan is not implemented, switching to %s...",
-             cm ? "MetaCompositorXRender" : "MetaCompositorNone");
+  enum_class = g_type_class_ref (META_TYPE_COMPOSITOR_TYPE);
+  enum_value = g_enum_get_value (enum_class, type);
+  g_assert_nonnull (enum_value);
+
+  g_warning ("“vulkan” compositor is not implemented, switching to “%s”...",
+             enum_value->value_nick);
+
+  g_type_class_unref (enum_class);
 
   g_unsetenv ("META_COMPOSITOR");
-  meta_prefs_set_compositing_manager (!cm);
-  meta_prefs_set_compositing_manager (cm);
+  meta_display_update_compositor (display);
 
   return G_SOURCE_REMOVE;
 }
-#endif
 
 static gboolean
 meta_compositor_vulkan_manage (MetaCompositor  *compositor,
                                GError         **error)
 {
-#ifdef HAVE_VULKAN
   MetaCompositorVulkan *vulkan;
 
   vulkan = META_COMPOSITOR_VULKAN (compositor);
+
+  if (!meta_compositor_check_common_extensions (compositor, error))
+    return FALSE;
 
   enumerate_instance_layers (vulkan);
   enumerate_instance_extensions (vulkan);
@@ -1266,63 +1271,20 @@ meta_compositor_vulkan_manage (MetaCompositor  *compositor,
   g_timeout_add (10000, (GSourceFunc) not_implemented_cb, vulkan);
 
   return TRUE;
-#else
-  g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED,
-               "Compiled without Vulkan support");
-
-  return FALSE;
-#endif
 }
 
-static void
+static MetaSurface *
 meta_compositor_vulkan_add_window (MetaCompositor *compositor,
                                    MetaWindow     *window)
 {
-}
+  MetaSurface *surface;
 
-static void
-meta_compositor_vulkan_remove_window (MetaCompositor *compositor,
-                                      MetaWindow     *window)
-{
-}
+  surface = g_object_new (META_TYPE_SURFACE_VULKAN,
+                          "compositor", compositor,
+                          "window", window,
+                          NULL);
 
-static void
-meta_compositor_vulkan_show_window (MetaCompositor *compositor,
-                                    MetaWindow     *window,
-                                    MetaEffectType  effect)
-{
-}
-
-static void
-meta_compositor_vulkan_hide_window (MetaCompositor *compositor,
-                                    MetaWindow     *window,
-                                    MetaEffectType  effect)
-{
-}
-
-static void
-meta_compositor_vulkan_window_opacity_changed (MetaCompositor *compositor,
-                                               MetaWindow     *window)
-{
-}
-
-static void
-meta_compositor_vulkan_window_opaque_region_changed (MetaCompositor *compositor,
-                                                     MetaWindow     *window)
-{
-}
-
-static void
-meta_compositor_vulkan_window_shape_region_changed (MetaCompositor *compositor,
-                                                    MetaWindow     *window)
-{
-}
-
-static void
-meta_compositor_vulkan_set_updates_frozen (MetaCompositor *compositor,
-                                           MetaWindow     *window,
-                                           gboolean        updates_frozen)
-{
+  return surface;
 }
 
 static void
@@ -1332,44 +1294,20 @@ meta_compositor_vulkan_process_event (MetaCompositor *compositor,
 {
 }
 
-static cairo_surface_t *
-meta_compositor_vulkan_get_window_surface (MetaCompositor *compositor,
-                                           MetaWindow     *window)
-{
-  return NULL;
-}
-
-static void
-meta_compositor_vulkan_maximize_window (MetaCompositor *compositor,
-                                        MetaWindow     *window)
-{
-}
-
-static void
-meta_compositor_vulkan_unmaximize_window (MetaCompositor *compositor,
-                                          MetaWindow     *window)
-{
-}
-
 static void
 meta_compositor_vulkan_sync_screen_size (MetaCompositor *compositor)
 {
 }
 
 static void
-meta_compositor_vulkan_sync_stack (MetaCompositor *compositor,
-                                   GList          *stack)
+meta_compositor_vulkan_pre_paint (MetaCompositor *compositor)
 {
+  META_COMPOSITOR_CLASS (meta_compositor_vulkan_parent_class)->pre_paint (compositor);
 }
 
 static void
-meta_compositor_vulkan_sync_window_geometry (MetaCompositor *compositor,
-                                             MetaWindow     *window)
-{
-}
-
-static void
-meta_compositor_vulkan_redraw (MetaCompositor *compositor)
+meta_compositor_vulkan_redraw (MetaCompositor *compositor,
+                               XserverRegion   all_damage)
 {
 }
 
@@ -1386,24 +1324,23 @@ meta_compositor_vulkan_class_init (MetaCompositorVulkanClass *vulkan_class)
 
   compositor_class->manage = meta_compositor_vulkan_manage;
   compositor_class->add_window = meta_compositor_vulkan_add_window;
-  compositor_class->remove_window = meta_compositor_vulkan_remove_window;
-  compositor_class->show_window = meta_compositor_vulkan_show_window;
-  compositor_class->hide_window = meta_compositor_vulkan_hide_window;
-  compositor_class->window_opacity_changed = meta_compositor_vulkan_window_opacity_changed;
-  compositor_class->window_opaque_region_changed = meta_compositor_vulkan_window_opaque_region_changed;
-  compositor_class->window_shape_region_changed = meta_compositor_vulkan_window_shape_region_changed;
-  compositor_class->set_updates_frozen = meta_compositor_vulkan_set_updates_frozen;
   compositor_class->process_event = meta_compositor_vulkan_process_event;
-  compositor_class->get_window_surface = meta_compositor_vulkan_get_window_surface;
-  compositor_class->maximize_window = meta_compositor_vulkan_maximize_window;
-  compositor_class->unmaximize_window = meta_compositor_vulkan_unmaximize_window;
   compositor_class->sync_screen_size = meta_compositor_vulkan_sync_screen_size;
-  compositor_class->sync_stack = meta_compositor_vulkan_sync_stack;
-  compositor_class->sync_window_geometry = meta_compositor_vulkan_sync_window_geometry;
+  compositor_class->pre_paint = meta_compositor_vulkan_pre_paint;
   compositor_class->redraw = meta_compositor_vulkan_redraw;
 }
 
 static void
 meta_compositor_vulkan_init (MetaCompositorVulkan *vulkan)
 {
+  meta_compositor_set_composited (META_COMPOSITOR (vulkan), TRUE);
+}
+
+MetaCompositor *
+meta_compositor_vulkan_new (MetaDisplay  *display,
+                            GError      **error)
+{
+  return g_initable_new (META_TYPE_COMPOSITOR_VULKAN, NULL, error,
+                         "display", display,
+                         NULL);
 }

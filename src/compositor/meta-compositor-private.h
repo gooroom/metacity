@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2008 Iain Holmes
- * Copyright (C) 2017 Alberts Muktupāvels
+ * Copyright (C) 2017-2019 Alberts Muktupāvels
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,7 +19,9 @@
 #ifndef META_COMPOSITOR_PRIVATE_H
 #define META_COMPOSITOR_PRIVATE_H
 
+#include <X11/extensions/Xfixes.h>
 #include "meta-compositor.h"
+#include "meta-surface.h"
 
 G_BEGIN_DECLS
 
@@ -27,71 +29,54 @@ struct _MetaCompositorClass
 {
   GObjectClass parent_class;
 
-  gboolean          (* manage)                       (MetaCompositor     *compositor,
-                                                      GError            **error);
+  gboolean      (* manage)                 (MetaCompositor  *compositor,
+                                            GError         **error);
 
-  void              (* add_window)                   (MetaCompositor     *compositor,
-                                                      MetaWindow         *window);
+  MetaSurface * (* add_window)             (MetaCompositor  *compositor,
+                                            MetaWindow      *window);
 
-  void              (* remove_window)                (MetaCompositor     *compositor,
-                                                      MetaWindow         *window);
+  void          (* process_event)          (MetaCompositor  *compositor,
+                                            XEvent          *event,
+                                            MetaWindow      *window);
 
-  void              (* show_window)                  (MetaCompositor     *compositor,
-                                                      MetaWindow         *window,
-                                                      MetaEffectType      effect);
+  void          (* sync_screen_size)       (MetaCompositor  *compositor);
 
-  void              (* hide_window)                  (MetaCompositor     *compositor,
-                                                      MetaWindow         *window,
-                                                      MetaEffectType      effect);
+  void          (* sync_window_geometry)   (MetaCompositor  *compositor,
+                                            MetaSurface     *surface);
 
-  void              (* window_opacity_changed)       (MetaCompositor     *compositor,
-                                                      MetaWindow         *window);
+  gboolean      (* ready_to_redraw)        (MetaCompositor  *compositor);
 
-  void              (* window_opaque_region_changed) (MetaCompositor     *compositor,
-                                                      MetaWindow         *window);
+  void          (* pre_paint)              (MetaCompositor  *compositor);
 
-  void              (* window_shape_region_changed)  (MetaCompositor     *compositor,
-                                                      MetaWindow         *window);
-
-  void              (* set_updates_frozen)           (MetaCompositor     *compositor,
-                                                      MetaWindow         *window,
-                                                      gboolean            updates_frozen);
-
-  void              (* process_event)                (MetaCompositor     *compositor,
-                                                      XEvent             *event,
-                                                      MetaWindow         *window);
-
-  cairo_surface_t * (* get_window_surface)           (MetaCompositor     *compositor,
-                                                      MetaWindow         *window);
-
-  void              (* maximize_window)              (MetaCompositor     *compositor,
-                                                      MetaWindow         *window);
-
-  void              (* unmaximize_window)            (MetaCompositor     *compositor,
-                                                      MetaWindow         *window);
-
-  void              (* sync_screen_size)             (MetaCompositor     *compositor);
-
-  void              (* sync_stack)                   (MetaCompositor     *compositor,
-                                                      GList              *stack);
-
-  void              (* sync_window_geometry)         (MetaCompositor     *compositor,
-                                                      MetaWindow         *window);
-
-  void              (* redraw)                       (MetaCompositor     *compositor);
+  void          (* redraw)                 (MetaCompositor  *compositor,
+                                            XserverRegion    all_damage);
 };
 
-gboolean     meta_compositor_set_selection      (MetaCompositor  *compositor,
-                                                 GError         **error);
+void         meta_compositor_set_composited          (MetaCompositor  *compositor,
+                                                      gboolean         composited);
 
-Window       meta_compositor_get_overlay_window (MetaCompositor  *compositor);
+gboolean     meta_compositor_check_common_extensions (MetaCompositor  *compositor,
+                                                      GError         **error);
 
-gboolean     meta_compositor_redirect_windows   (MetaCompositor  *compositor,
-                                                 GError         **error);
+gboolean     meta_compositor_set_selection           (MetaCompositor  *compositor,
+                                                      GError         **error);
 
-MetaDisplay *meta_compositor_get_display        (MetaCompositor  *compositor);
+Window       meta_compositor_get_overlay_window      (MetaCompositor  *compositor);
 
-void         meta_compositor_queue_redraw       (MetaCompositor  *compositor);
+gboolean     meta_compositor_redirect_windows        (MetaCompositor  *compositor,
+                                                      GError         **error);
+
+MetaDisplay *meta_compositor_get_display             (MetaCompositor  *compositor);
+
+GList       *meta_compositor_get_stack               (MetaCompositor  *compositor);
+
+void         meta_compositor_add_damage              (MetaCompositor  *compositor,
+                                                      const gchar     *name,
+                                                      XserverRegion    damage);
+
+void         meta_compositor_damage_screen           (MetaCompositor  *compositor);
+
+void         meta_compositor_queue_redraw            (MetaCompositor  *compositor);
 
 G_END_DECLS
 

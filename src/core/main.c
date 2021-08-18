@@ -47,6 +47,7 @@
 #include "util.h"
 #include "display-private.h"
 #include "errors.h"
+#include "meta-enum-types.h"
 #include "ui.h"
 #include "session.h"
 #include "prefs.h"
@@ -178,7 +179,80 @@ typedef struct
   gboolean composite;
   gboolean no_composite;
   gboolean no_force_fullscreen;
+
+  MetaCompositorType compositor;
+  gboolean compositor_set;
 } MetaArguments;
+
+static gboolean
+option_composite_cb (const char  *option_name,
+                     const char  *value,
+                     gpointer     data,
+                     GError     **error)
+{
+  MetaArguments *args;
+
+  args = data;
+  args->composite = TRUE;
+
+  g_warning (_("Option “%s” is deprecated, use the “--compositor” instead."),
+             option_name);
+
+  return TRUE;
+}
+
+static gboolean
+option_no_composite_cb (const char  *option_name,
+                        const char  *value,
+                        gpointer     data,
+                        GError     **error)
+{
+  MetaArguments *args;
+
+  args = data;
+  args->no_composite = TRUE;
+
+  g_warning (_("Option “%s” is deprecated, use the “--compositor” instead."),
+             option_name);
+
+  return TRUE;
+}
+
+static gboolean
+option_compositior_cb (const char  *option_name,
+                       const char  *value,
+                       gpointer     data,
+                       GError     **error)
+{
+  MetaArguments *args;
+  GEnumClass *enum_class;
+  GEnumValue *enum_value;
+
+  args = data;
+
+  enum_class = g_type_class_ref (META_TYPE_COMPOSITOR_TYPE);
+  enum_value = g_enum_get_value_by_nick (enum_class, value);
+
+  if (enum_value == NULL)
+    {
+      g_type_class_unref (enum_class);
+
+      g_set_error (error,
+                   G_OPTION_ERROR,
+                   G_OPTION_ERROR_FAILED,
+                   _("“%s” is not a valid compositor"),
+                   value);
+
+      return FALSE;
+    }
+
+  args->compositor = enum_value->value;
+  args->compositor_set = TRUE;
+
+  g_type_class_unref (enum_class);
+
+  return TRUE;
+}
 
 /**
  * Parses argc and argv and returns the
@@ -196,8 +270,7 @@ static void
 meta_parse_options (int *argc, char ***argv,
                     MetaArguments *meta_args)
 {
-  MetaArguments my_args = {NULL, NULL, NULL,
-                           FALSE, FALSE, FALSE, FALSE, FALSE};
+  MetaArguments my_args = { 0 };
   GOptionEntry options[] = {
     {
       "sm-disable", 0, 0, G_OPTION_ARG_NONE,
@@ -241,16 +314,31 @@ meta_parse_options (int *argc, char ***argv,
       NULL
     },
     {
-      "composite", 'c', G_OPTION_ARG_NONE, G_OPTION_ARG_NONE,
-      &my_args.composite,
+      "composite",
+      'c',
+      G_OPTION_FLAG_NO_ARG,
+      G_OPTION_ARG_CALLBACK,
+      option_composite_cb,
       N_("Turn compositing on"),
       NULL
     },
     {
-      "no-composite", 0, G_OPTION_ARG_NONE, G_OPTION_ARG_NONE,
-      &my_args.no_composite,
+      "no-composite",
+      0,
+      G_OPTION_FLAG_NO_ARG,
+      G_OPTION_ARG_CALLBACK,
+      option_no_composite_cb,
       N_("Turn compositing off"),
       NULL
+    },
+    {
+      "compositor",
+      0,
+      G_OPTION_FLAG_NONE,
+      G_OPTION_ARG_CALLBACK,
+      option_compositior_cb,
+      N_("Compositor to use"),
+      "COMPOSITOR"
     },
     {
       "no-force-fullscreen", 0, G_OPTION_ARG_NONE, G_OPTION_ARG_NONE,
@@ -261,9 +349,12 @@ meta_parse_options (int *argc, char ***argv,
     {NULL}
   };
   GOptionContext *ctx;
+  GOptionGroup *group;
   GError *error = NULL;
 
   ctx = g_option_context_new (NULL);
+  group = g_option_group_new (NULL, NULL, NULL, &my_args, NULL);
+  g_option_context_set_main_group (ctx, group);
   g_option_context_add_main_entries (ctx, options, "metacity");
   if (!g_option_context_parse (ctx, argc, argv, &error))
     {
@@ -455,8 +546,17 @@ main (int argc, char **argv)
   g_free (meta_args.display_name);
   g_free (meta_args.client_id);
 
-  if (meta_args.composite || meta_args.no_composite)
-    meta_prefs_set_compositing_manager (meta_args.composite);
+  if (meta_args.compositor_set)
+    {
+      meta_prefs_set_compositor (meta_args.compositor);
+    }
+  else if (meta_args.composite || meta_args.no_composite)
+    {
+      if (meta_args.composite)
+        meta_prefs_set_compositor (META_COMPOSITOR_TYPE_XRENDER);
+      else
+        meta_prefs_set_compositor (META_COMPOSITOR_TYPE_NONE);
+    }
 
   if (meta_args.no_force_fullscreen)
     meta_prefs_set_force_fullscreen (FALSE);

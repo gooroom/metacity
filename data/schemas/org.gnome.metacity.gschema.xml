@@ -23,6 +23,17 @@
       <summary>Compositing Manager</summary>
       <description>
         Determines whether Metacity is a compositing manager.
+
+        DEPRECATED: This key is deprecated, use the “compositor” instead.
+      </description>
+    </key>
+
+    <key name="compositor" enum="org.gnome.metacity.MetaCompositorType">
+      <default>'xrender'</default>
+      <summary>Compositor</summary>
+      <description>
+        Compositor that Metacity will use for compositing. Possible values
+        are “none” and “xrender”.
       </description>
     </key>
 
@@ -49,20 +60,6 @@
         of their workspaces, "origin" for the upper-left corners of the
         workspaces, or "random" to place new windows at random locations within
         their workspaces.
-      </description>
-    </key>
-
-    <key name="reduced-resources" type="b">
-      <default>false</default>
-      <summary>If true, trade off usability for less resource usage</summary>
-      <description>
-        If true, Metacity will give the user less feedback by using wireframes,
-        avoiding animations, or other means. This is a significant reduction
-        in usability for many users, but may allow legacy applications to
-        continue working, and may also be a useful tradeoff
-        for terminal servers.
-
-        However, the wireframe feature is disabled when accessibility is on.
       </description>
     </key>
 

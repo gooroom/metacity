@@ -35,10 +35,12 @@ typedef enum
 {
   META_COMPOSITOR_TYPE_NONE,
   META_COMPOSITOR_TYPE_XRENDER,
-  META_COMPOSITOR_TYPE_VULKAN
+  META_COMPOSITOR_TYPE_XPRESENT, /*< skip >*/
+  META_COMPOSITOR_TYPE_EXTERNAL, /*< skip >*/
+  META_COMPOSITOR_TYPE_VULKAN /*< skip >*/
 } MetaCompositorType;
 
-typedef enum
+typedef enum /*< skip >*/
 {
   META_EFFECT_TYPE_NONE,
   META_EFFECT_TYPE_CREATE,
@@ -46,9 +48,6 @@ typedef enum
   META_EFFECT_TYPE_MINIMIZE,
   META_EFFECT_TYPE_UNMINIMIZE,
 } MetaEffectType;
-
-MetaCompositor  *meta_compositor_new                          (MetaCompositorType  type,
-                                                               MetaDisplay        *display);
 
 void             meta_compositor_add_window                   (MetaCompositor     *compositor,
                                                                MetaWindow         *window);

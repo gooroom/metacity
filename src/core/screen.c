@@ -100,6 +100,8 @@ set_supported_hint (MetaScreen *screen)
 #undef EWMH_ATOMS_ONLY
 
     screen->display->atom__GTK_FRAME_EXTENTS,
+    screen->display->atom__GTK_SHOW_WINDOW_MENU,
+    screen->display->atom__GTK_WORKAREAS
   };
 
   XChangeProperty (screen->display->xdisplay, screen->xroot,
@@ -275,7 +277,6 @@ meta_screen_new (MetaDisplay *display,
   char buf[128];
   guint32 manager_timestamp;
   gulong current_workspace;
-  gboolean composited;
 
   replace_current_wm = meta_get_replace_current_wm ();
 
@@ -432,37 +433,6 @@ meta_screen_new (MetaDisplay *display,
   screen->vertical_workspaces = FALSE;
   screen->starting_corner = META_SCREEN_TOPLEFT;
 
-  {
-    XFontStruct *font_info;
-    XGCValues gc_values;
-    gulong value_mask = 0;
-
-    gc_values.subwindow_mode = IncludeInferiors;
-    value_mask |= GCSubwindowMode;
-    gc_values.function = GXinvert;
-    value_mask |= GCFunction;
-    gc_values.line_width = META_WIREFRAME_XOR_LINE_WIDTH;
-    value_mask |= GCLineWidth;
-
-    font_info = XLoadQueryFont (screen->display->xdisplay, "fixed");
-
-    if (font_info != NULL)
-      {
-        gc_values.font = font_info->fid;
-        value_mask |= GCFont;
-        XFreeFontInfo (NULL, font_info, 1);
-      }
-    else
-      {
-        g_warning ("xserver doesn't have 'fixed' font.");
-      }
-
-    screen->root_xor_gc = XCreateGC (screen->display->xdisplay,
-                                     screen->xroot,
-                                     value_mask,
-                                     &gc_values);
-  }
-
   screen->monitor_infos = NULL;
   screen->n_monitor_infos = 0;
   screen->last_monitor_index = 0;
@@ -514,8 +484,7 @@ meta_screen_new (MetaDisplay *display,
   screen->keys_grabbed = FALSE;
   meta_screen_grab_keys (screen);
 
-  composited = meta_compositor_is_composited (screen->display->compositor);
-  screen->ui = meta_ui_new (screen->display->xdisplay, composited);
+  screen->ui = meta_ui_new (screen->display->xdisplay, FALSE);
 
   screen->tab_popup = NULL;
   screen->tile_preview = NULL;
@@ -559,8 +528,6 @@ void
 meta_screen_free (MetaScreen *screen,
                   guint32     timestamp)
 {
-  XGCValues gc_values = { 0 };
-
   screen->closing += 1;
 
   meta_prefs_remove_listener (prefs_changed_callback, screen);
@@ -603,19 +570,6 @@ meta_screen_free (MetaScreen *screen,
 
   if (screen->work_area_idle != 0)
     g_source_remove (screen->work_area_idle);
-
-
-  if (XGetGCValues (screen->display->xdisplay,
-                    screen->root_xor_gc,
-                    GCFont,
-                    &gc_values))
-    {
-      XUnloadFont (screen->display->xdisplay,
-                   gc_values.font);
-    }
-
-  XFreeGC (screen->display->xdisplay,
-           screen->root_xor_gc);
 
   if (screen->monitor_infos)
     g_free (screen->monitor_infos);
@@ -1839,6 +1793,48 @@ meta_create_offscreen_window (Display *xdisplay,
 }
 
 static void
+set_workspace_work_area_hint (MetaWorkspace *workspace,
+                              MetaScreen    *screen)
+{
+  unsigned long *data;
+  unsigned long *tmp;
+  int i;
+  gchar *workarea_name;
+  Atom workarea_atom;
+
+  data = g_new (unsigned long, screen->n_monitor_infos * 4);
+  tmp = data;
+
+  for (i = 0; i < screen->n_monitor_infos; i++)
+    {
+      MetaRectangle area;
+
+      meta_workspace_get_work_area_for_monitor (workspace, i, &area);
+
+      tmp[0] = area.x;
+      tmp[1] = area.y;
+      tmp[2] = area.width;
+      tmp[3] = area.height;
+
+      tmp += 4;
+    }
+
+  workarea_name = g_strdup_printf ("_GTK_WORKAREAS_D%d",
+                                   meta_workspace_index (workspace));
+
+  workarea_atom = XInternAtom (screen->display->xdisplay, workarea_name, False);
+  g_free (workarea_name);
+
+  meta_error_trap_push (screen->display);
+  XChangeProperty (screen->display->xdisplay, screen->xroot, workarea_atom,
+                   XA_CARDINAL, 32, PropModeReplace,
+                   (guchar*) data, screen->n_monitor_infos * 4);
+  meta_error_trap_pop (screen->display);
+
+  g_free (data);
+}
+
+static void
 set_work_area_hint (MetaScreen *screen)
 {
   int num_workspaces;
@@ -1858,6 +1854,8 @@ set_work_area_hint (MetaScreen *screen)
       if (workspace->screen == screen)
         {
           meta_workspace_get_work_area_all_monitors (workspace, &area);
+          set_workspace_work_area_hint (workspace, screen);
+
           tmp[0] = area.x;
           tmp[1] = area.y;
           tmp[2] = area.width;
@@ -2411,7 +2409,7 @@ remove_sequence (MetaScreen        *screen,
 typedef struct
 {
   GSList *list;
-  GTimeVal now;
+  gint64  now;
 } CollectTimedOutData;
 
 /* This should be fairly long, as it should never be required unless
@@ -2432,9 +2430,7 @@ collect_timed_out_foreach (void *element,
 
   sn_startup_sequence_get_last_active_time (sequence, &tv_sec, &tv_usec);
 
-  elapsed =
-    ((((double)ctod->now.tv_sec - tv_sec) * G_USEC_PER_SEC +
-      (ctod->now.tv_usec - tv_usec))) / 1000.0;
+  elapsed = (ctod->now - (tv_sec * G_USEC_PER_SEC + tv_usec)) / 1000.0;
 
   meta_topic (META_DEBUG_STARTUP,
               "Sequence used %g seconds vs. %g max: %s\n",
@@ -2453,7 +2449,7 @@ startup_sequence_timeout (void *data)
   GSList *tmp;
 
   ctod.list = NULL;
-  g_get_current_time (&ctod.now);
+  ctod.now = g_get_real_time ();
   g_slist_foreach (screen->startup_sequences,
                    collect_timed_out_foreach,
                    &ctod);

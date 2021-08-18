@@ -98,9 +98,24 @@ meta_window_ensure_frame (MetaWindow *window)
                 frame->rect.x, frame->rect.y,
                 frame->rect.width, frame->rect.height);
 
+  frame->xvisual = window->xvisual;
+
+  if (meta_compositor_is_composited (window->display->compositor))
+    {
+      XVisualInfo visual_info;
+
+      if (XMatchVisualInfo (window->display->xdisplay,
+                            XScreenNumberOfScreen (window->screen->xscreen),
+                            32, TrueColor,
+                            &visual_info) != 0)
+        {
+          frame->xvisual = visual_info.visual;
+        }
+    }
+
   frame->xwindow = meta_ui_create_frame_window (window->screen->ui,
                                                 window->display->xdisplay,
-                                                window->xvisual,
+                                                frame->xvisual,
                                                 frame->rect.x,
                                                 frame->rect.y,
                                                 frame->rect.width,
@@ -124,9 +139,6 @@ meta_window_ensure_frame (MetaWindow *window)
       window->mapped = FALSE; /* the reparent will unmap the window,
                                * we don't want to take that as a withdraw
                                */
-      meta_topic (META_DEBUG_WINDOW_STATE,
-                  "Incrementing unmaps_pending on %s for reparent\n", window->desc);
-      window->unmaps_pending += 1;
     }
   /* window was reparented to this position */
   window->rect.x = 0;
@@ -136,6 +148,10 @@ meta_window_ensure_frame (MetaWindow *window)
                                     window->xwindow,
                                     XNextRequest (window->display->xdisplay));
 
+  meta_window_add_pending_unmap (window,
+                                 NextRequest (window->display->xdisplay),
+                                 "reparent");
+
   XReparentWindow (window->display->xdisplay,
                    window->xwindow,
                    frame->xwindow,
@@ -143,6 +159,12 @@ meta_window_ensure_frame (MetaWindow *window)
                    window->rect.y);
   /* FIXME handle this error */
   meta_error_trap_pop (window->display);
+
+  /* Ensure focus is restored after the unmap/map events triggered
+   * by XReparentWindow().
+   */
+  if (meta_window_has_focus (window))
+    window->restore_focus_on_map = TRUE;
 
   /* stick frame to the window */
   window->frame = frame;
@@ -192,14 +214,15 @@ meta_window_destroy_frame (MetaWindow *window)
                                * can identify a withdraw initiated
                                * by the client.
                                */
-      meta_topic (META_DEBUG_WINDOW_STATE,
-                  "Incrementing unmaps_pending on %s for reparent back to root\n", window->desc);
-      window->unmaps_pending += 1;
     }
 
   meta_stack_tracker_record_add (window->screen->stack_tracker,
                                  window->xwindow,
                                  XNextRequest (window->display->xdisplay));
+
+  meta_window_add_pending_unmap (window,
+                                 NextRequest (window->display->xdisplay),
+                                 "reparent back to root");
 
   XReparentWindow (window->display->xdisplay,
                    window->xwindow,
@@ -213,6 +236,12 @@ meta_window_destroy_frame (MetaWindow *window)
   meta_error_trap_pop (window->display);
 
   meta_ui_destroy_frame_window (window->screen->ui, frame->xwindow);
+
+  /* Ensure focus is restored after the unmap/map events triggered
+   * by XReparentWindow().
+   */
+  if (meta_window_has_focus (window))
+    window->restore_focus_on_map = TRUE;
 
   meta_display_unregister_x_window (window->display,
                                     frame->xwindow);
@@ -419,14 +448,6 @@ meta_frame_get_frame_bounds (MetaFrame *frame)
 }
 
 void
-meta_frame_get_mask (MetaFrame *frame,
-                     cairo_t   *cr)
-{
-  meta_ui_get_frame_mask (frame->window->screen->ui, frame->xwindow,
-                          frame->rect.width, frame->rect.height, cr);
-}
-
-void
 meta_frame_queue_draw (MetaFrame *frame)
 {
   meta_ui_queue_frame_draw (frame->window->screen->ui,
@@ -450,6 +471,12 @@ meta_frame_set_screen_cursor (MetaFrame	*frame,
       XFlush (frame->window->display->xdisplay);
       XFreeCursor (frame->window->display->xdisplay, xcursor);
     }
+}
+
+Visual *
+meta_frame_get_xvisual (MetaFrame *frame)
+{
+  return frame->xvisual;
 }
 
 Window

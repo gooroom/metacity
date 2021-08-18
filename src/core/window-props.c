@@ -396,28 +396,6 @@ reload_wm_window_role (MetaWindow    *window,
 }
 
 static void
-reload_net_wm_pid (MetaWindow    *window,
-                   MetaPropValue *value,
-                   gboolean       initial)
-{
-  if (value->type != META_PROP_VALUE_INVALID)
-    {
-      gulong cardinal = (int) value->v.cardinal;
-
-      if (cardinal <= 0)
-        {
-          g_warning ("Application set a bogus _NET_WM_PID %lu", cardinal);
-        }
-      else
-        {
-          window->net_wm_pid = cardinal;
-          meta_verbose ("Window has _NET_WM_PID %d\n",
-                        window->net_wm_pid);
-        }
-    }
-}
-
-static void
 reload_net_wm_user_time (MetaWindow    *window,
                          MetaPropValue *value,
                          gboolean       initial)
@@ -571,21 +549,24 @@ set_title_text (MetaWindow  *window,
                       title, window->wm_client_machine);
       modified = TRUE;
     }
-  else if (window->net_wm_pid != -1)
+  else if (meta_window_get_client_pid (window) != -1)
     {
+      pid_t client_pid;
+      uid_t window_owner;
+      gboolean window_owner_known;
+      gboolean window_owner_is_us;
+
       /* We know the process which owns this window; perhaps we can
        * find out the name of its owner (if it's not us).
        */
 
-      char *found_name = NULL;
+      client_pid = meta_window_get_client_pid (window);
+      window_owner = 0;
 
-      uid_t window_owner = 0;
-      gboolean window_owner_known =
-              owner_of_process (window->net_wm_pid, &window_owner);
+      window_owner_known = owner_of_process (client_pid, &window_owner);
 
       /* Assume a window with unknown ownership is ours (call it usufruct!) */
-      gboolean window_owner_is_us =
-              !window_owner_known || window_owner==getuid ();
+      window_owner_is_us = !window_owner_known || window_owner==getuid ();
 
       if (window_owner_is_us)
         {
@@ -606,6 +587,7 @@ set_title_text (MetaWindow  *window,
             {
               /* Okay, let's look up the name. */
               struct passwd *pwd;
+              char *found_name = NULL;
 
               errno = 0;
               pwd = getpwuid (window_owner);
@@ -721,16 +703,27 @@ reload_wm_name (MetaWindow    *window,
 }
 
 static void
-meta_window_set_opaque_region (MetaWindow     *window,
-                               cairo_region_t *region)
+meta_window_set_opaque_region (MetaWindow    *window,
+                               XserverRegion  region)
 {
-  if (cairo_region_equal (window->opaque_region, region))
+  Display *xdisplay;
+
+  xdisplay = window->display->xdisplay;
+
+  if (meta_xserver_region_equal (xdisplay, window->opaque_region, region))
     return;
 
-  g_clear_pointer (&window->opaque_region, cairo_region_destroy);
+  if (window->opaque_region != None)
+    {
+      XFixesDestroyRegion (xdisplay, window->opaque_region);
+      window->opaque_region = None;
+    }
 
-  if (region != NULL)
-    window->opaque_region = cairo_region_reference (region);
+  if (region != None)
+    {
+      window->opaque_region = XFixesCreateRegion (xdisplay, NULL, 0);
+      XFixesCopyRegion (xdisplay, window->opaque_region, region);
+    }
 
   meta_compositor_window_opaque_region_changed (window->display->compositor, window);
 }
@@ -742,12 +735,13 @@ reload_opaque_region (MetaWindow    *window,
 {
   int nitems, nrects, rect_index, i;
   gulong *region;
-  cairo_rectangle_int_t *rects;
-  cairo_region_t *opaque_region;
+  XRectangle *rects;
+  Display *xdisplay;
+  XserverRegion opaque_region;
 
   if (value->type == META_PROP_VALUE_INVALID)
     {
-      meta_window_set_opaque_region (window, NULL);
+      meta_window_set_opaque_region (window, None);
       return;
     }
 
@@ -757,24 +751,24 @@ reload_opaque_region (MetaWindow    *window,
   if (nitems % 4 != 0)
     {
       meta_verbose ("_NET_WM_OPAQUE_REGION does not have a list of 4-tuples.");
-      meta_window_set_opaque_region (window, NULL);
+      meta_window_set_opaque_region (window, None);
       return;
     }
 
   /* empty region */
   if (nitems == 0)
     {
-      meta_window_set_opaque_region (window, NULL);
+      meta_window_set_opaque_region (window, None);
       return;
     }
 
   nrects = nitems / 4;
-  rects = g_new (cairo_rectangle_int_t, nrects);
+  rects = g_new (XRectangle, nrects);
   rect_index = i = 0;
 
   while (i < nitems)
     {
-      cairo_rectangle_int_t *rect;
+      XRectangle *rect;
 
       rect = &rects[rect_index];
 
@@ -786,11 +780,12 @@ reload_opaque_region (MetaWindow    *window,
       rect_index++;
     }
 
-  opaque_region = cairo_region_create_rectangles (rects, nrects);
+  xdisplay = window->display->xdisplay;
+  opaque_region = XFixesCreateRegion (xdisplay, rects, nrects);
   g_free (rects);
 
   meta_window_set_opaque_region (window, opaque_region);
-  cairo_region_destroy (opaque_region);
+  XFixesDestroyRegion (xdisplay, opaque_region);
 }
 
 static void
@@ -869,7 +864,6 @@ reload_mwm_hints (MetaWindow    *window,
                   gboolean       initial)
 {
   MotifWmHints *hints;
-  gboolean decorated;
 
   window->mwm_decorated = TRUE;
   window->mwm_border_only = FALSE;
@@ -887,7 +881,6 @@ reload_mwm_hints (MetaWindow    *window,
     }
 
   hints = value->v.motif_hints;
-  decorated = window->decorated;
 
   /* We support those MWM hints deemed non-stupid */
 
@@ -974,23 +967,6 @@ reload_mwm_hints (MetaWindow    *window,
     meta_verbose ("Functions flag unset\n");
 
   meta_window_recalc_features (window);
-
-  /* We do all this anyhow at the end of meta_window_new() */
-  if (!window->constructing)
-    {
-      if (window->decorated)
-        meta_window_ensure_frame (window);
-      else
-        meta_window_destroy_frame (window);
-
-      meta_window_queue (window,
-                         META_QUEUE_MOVE_RESIZE |
-                         /* because ensure/destroy frame may unmap: */
-                         META_QUEUE_CALC_SHOWING);
-
-      if (decorated != window->decorated)
-        g_object_notify (G_OBJECT (window), "decorated");
-    }
 }
 
 static void
@@ -1009,10 +985,12 @@ reload_wm_class (MetaWindow    *window,
   if (value->type != META_PROP_VALUE_INVALID)
     {
       if (value->v.class_hint.res_name)
-        window->res_name = g_strdup (value->v.class_hint.res_name);
+        window->res_name = g_convert (value->v.class_hint.res_name, -1,
+                                      "UTF-8", "LATIN1", NULL, NULL, NULL);
 
       if (value->v.class_hint.res_class)
-        window->res_class = g_strdup (value->v.class_hint.res_class);
+        window->res_class = g_convert (value->v.class_hint.res_class, -1,
+                                       "UTF-8", "LATIN1", NULL, NULL, NULL);
     }
 
   meta_verbose ("Window %s class: '%s' name: '%s'\n",
@@ -1531,6 +1509,8 @@ reload_wm_protocols (MetaWindow    *window,
   if (value->type == META_PROP_VALUE_INVALID)
     return;
 
+  meta_verbose ("Updating WM_PROTOCOLS for %s\n", window->desc);
+
   i = 0;
   while (i < value->v.atom_list.n_atoms)
     {
@@ -1545,10 +1525,6 @@ reload_wm_protocols (MetaWindow    *window,
         window->net_wm_ping = TRUE;
       ++i;
     }
-
-  meta_verbose ("New _NET_STARTUP_ID \"%s\" for %s\n",
-                window->startup_id ? window->startup_id : "unset",
-                window->desc);
 }
 
 static void
@@ -1803,12 +1779,6 @@ meta_display_init_window_prop_hooks (MetaDisplay *display)
       LOAD_INIT | INCLUDE_OR
     },
     {
-      display->atom__NET_WM_PID,
-      META_PROP_VALUE_CARDINAL,
-      reload_net_wm_pid,
-      LOAD_INIT | INCLUDE_OR
-    },
-    {
       XA_WM_NAME,
       META_PROP_VALUE_TEXT_PROPERTY,
       reload_wm_name,
@@ -1948,6 +1918,12 @@ meta_display_init_window_prop_hooks (MetaDisplay *display)
     },
     {
       display->atom__NET_WM_STRUT_PARTIAL,
+      META_PROP_VALUE_INVALID,
+      reload_struts,
+      NONE
+    },
+    {
+      display->atom__GNOME_WM_STRUT_AREA,
       META_PROP_VALUE_INVALID,
       reload_struts,
       NONE

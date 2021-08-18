@@ -70,12 +70,6 @@ void meta_ui_get_frame_borders (MetaUI           *ui,
                                 Window            frame_xwindow,
                                 MetaFrameBorders *borders);
 
-void meta_ui_get_frame_mask (MetaUI  *ui,
-                             Window   frame_xwindow,
-                             guint    width,
-                             guint    height,
-                             cairo_t *cr);
-
 Window meta_ui_create_frame_window (MetaUI  *ui,
                                     Display *xdisplay,
                                     Visual  *xvisual,
@@ -134,7 +128,7 @@ MetaWindowMenu* meta_ui_window_menu_new   (MetaUI             *ui,
                                            gpointer            data);
 void            meta_ui_window_menu_popup (MetaWindowMenu     *menu,
                                            const GdkRectangle *rect,
-                                           const GdkEvent     *event);
+                                           guint32             timestamp);
 void            meta_ui_window_menu_free  (MetaWindowMenu     *menu);
 
 
@@ -144,15 +138,11 @@ GdkPixbuf* meta_gdk_pixbuf_get_from_pixmap (Pixmap       xpixmap,
                                             int          width,
                                             int          height);
 
-/* Used when we have a server grab and draw all over everything,
- * then we need to handle exposes after doing that, instead of
- * during it
- */
-void      meta_ui_push_delay_exposes (MetaUI *ui);
-void      meta_ui_pop_delay_exposes  (MetaUI *ui);
+GdkPixbuf *meta_ui_get_default_window_icon (MetaUI *ui,
+                                            int     ideal_size);
 
-GdkPixbuf* meta_ui_get_default_window_icon (MetaUI *ui);
-GdkPixbuf* meta_ui_get_default_mini_icon (MetaUI *ui);
+GdkPixbuf *meta_ui_get_default_mini_icon   (MetaUI *ui,
+                                            int     ideal_size);
 
 gboolean  meta_ui_window_should_not_cause_focus (Display *xdisplay,
                                                  Window   xwindow);

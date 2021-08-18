@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2008 Iain Holmes
- * Copyright (C) 2017 Alberts Muktupāvels
+ * Copyright (C) 2017-2019 Alberts Muktupāvels
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,6 +17,7 @@
  */
 
 #include "config.h"
+#include "meta-compositor-private.h"
 
 #include <X11/extensions/shape.h>
 #include <X11/extensions/Xcomposite.h>
@@ -24,28 +25,34 @@
 
 #include "display-private.h"
 #include "errors.h"
-#include "meta-compositor-none.h"
-#include "meta-compositor-xrender.h"
-#include "meta-compositor-vulkan.h"
+#include "frame.h"
+#include "util.h"
 #include "screen-private.h"
 
 typedef struct
 {
-  MetaDisplay *display;
+  MetaDisplay   *display;
+
+  gboolean       composited;
 
   /* _NET_WM_CM_Sn */
-  Atom         cm_atom;
-  Window       cm_window;
-  guint32      cm_timestamp;
+  Atom           cm_atom;
+  Window         cm_window;
+  guint32        cm_timestamp;
 
   /* XCompositeGetOverlayWindow */
-  Window       overlay_window;
+  Window         overlay_window;
 
   /* XCompositeRedirectSubwindows */
-  gboolean     windows_redirected;
+  gboolean       windows_redirected;
+
+  XserverRegion  all_damage;
+
+  GHashTable    *surfaces;
+  GList         *stack;
 
   /* meta_compositor_queue_redraw */
-  guint        redraw_id;
+  guint          redraw_id;
 } MetaCompositorPrivate;
 
 enum
@@ -53,6 +60,8 @@ enum
   PROP_0,
 
   PROP_DISPLAY,
+
+  PROP_COMPOSITED,
 
   LAST_PROP
 };
@@ -66,6 +75,95 @@ G_DEFINE_ABSTRACT_TYPE_WITH_CODE (MetaCompositor, meta_compositor, G_TYPE_OBJECT
                                   G_IMPLEMENT_INTERFACE (G_TYPE_INITABLE,
                                                          initable_iface_init))
 
+static void
+debug_damage_region (MetaCompositor *compositor,
+                     const gchar    *name,
+                     XserverRegion   damage)
+{
+  MetaCompositorPrivate *priv;
+  Display *xdisplay;
+
+  if (!meta_check_debug_flags (META_DEBUG_DAMAGE_REGION))
+    return;
+
+  priv = meta_compositor_get_instance_private (compositor);
+  xdisplay = priv->display->xdisplay;
+
+  if (damage != None)
+    {
+      XRectangle *rects;
+      int nrects;
+      XRectangle bounds;
+
+      rects = XFixesFetchRegionAndBounds (xdisplay, damage, &nrects, &bounds);
+
+      if (nrects > 0)
+        {
+          int i;
+
+          meta_topic (META_DEBUG_DAMAGE_REGION, "%s: %d rects, bounds: %d,%d (%d,%d)\n",
+                      name, nrects, bounds.x, bounds.y, bounds.width, bounds.height);
+
+          meta_push_no_msg_prefix ();
+
+          for (i = 0; i < nrects; i++)
+            {
+              meta_topic (META_DEBUG_DAMAGE_REGION, "\t%d,%d (%d,%d)\n", rects[i].x,
+                          rects[i].y, rects[i].width, rects[i].height);
+            }
+
+          meta_pop_no_msg_prefix ();
+        }
+      else
+        {
+          meta_topic (META_DEBUG_DAMAGE_REGION, "%s: empty\n", name);
+        }
+
+      XFree (rects);
+    }
+  else
+    {
+      meta_topic (META_DEBUG_DAMAGE_REGION, "%s: none\n", name);
+    }
+}
+
+static MetaSurface *
+find_surface_by_xwindow (MetaCompositor *compositor,
+                         Window          xwindow)
+{
+  MetaCompositorPrivate *priv;
+  MetaSurface *surface;
+  GHashTableIter iter;
+
+  priv = meta_compositor_get_instance_private (compositor);
+  surface = NULL;
+
+  g_hash_table_iter_init (&iter, priv->surfaces);
+  while (g_hash_table_iter_next (&iter, NULL, (gpointer) &surface))
+    {
+      MetaWindow *window;
+      MetaFrame *frame;
+
+      window = meta_surface_get_window (surface);
+      frame = meta_window_get_frame (window);
+
+      if (frame != NULL)
+        {
+          if (meta_frame_get_xwindow (frame) == xwindow)
+            break;
+        }
+      else
+        {
+          if (meta_window_get_xwindow (window) == xwindow)
+            break;
+        }
+
+      surface = NULL;
+    }
+
+  return surface;
+}
+
 static gboolean
 redraw_idle_cb (gpointer user_data)
 {
@@ -75,46 +173,27 @@ redraw_idle_cb (gpointer user_data)
   compositor = META_COMPOSITOR (user_data);
   priv = meta_compositor_get_instance_private (compositor);
 
-  META_COMPOSITOR_GET_CLASS (compositor)->redraw (compositor);
+  if (!META_COMPOSITOR_GET_CLASS (compositor)->ready_to_redraw (compositor))
+    {
+      priv->redraw_id = 0;
+
+      return G_SOURCE_REMOVE;
+    }
+
+  META_COMPOSITOR_GET_CLASS (compositor)->pre_paint (compositor);
+
+  if (priv->all_damage != None)
+    {
+      debug_damage_region (compositor, "paint_all", priv->all_damage);
+
+      META_COMPOSITOR_GET_CLASS (compositor)->redraw (compositor, priv->all_damage);
+      XFixesDestroyRegion (priv->display->xdisplay, priv->all_damage);
+      priv->all_damage = None;
+    }
 
   priv->redraw_id = 0;
 
   return G_SOURCE_REMOVE;
-}
-
-static gboolean
-check_common_extensions (MetaCompositor  *compositor,
-                         GError         **error)
-{
-  MetaCompositorPrivate *priv;
-
-  priv = meta_compositor_get_instance_private (compositor);
-
-  if (!priv->display->have_composite)
-    {
-      g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED,
-                   "Missing composite extension required for compositing");
-
-      return FALSE;
-    }
-
-  if (!priv->display->have_damage)
-    {
-      g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED,
-                   "Missing damage extension required for compositing");
-
-      return FALSE;
-    }
-
-  if (!priv->display->have_xfixes)
-    {
-      g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED,
-                   "Missing xfixes extension required for compositing");
-
-      return FALSE;
-    }
-
-  return TRUE;
 }
 
 static gboolean
@@ -128,12 +207,6 @@ meta_compositor_initable_init (GInitable     *initable,
   compositor = META_COMPOSITOR (initable);
   compositor_class = META_COMPOSITOR_GET_CLASS (compositor);
 
-  if (!META_IS_COMPOSITOR_NONE (compositor))
-    {
-      if (!check_common_extensions (compositor, error))
-        return FALSE;
-    }
-
   return compositor_class->manage (compositor, error);
 }
 
@@ -141,6 +214,21 @@ static void
 initable_iface_init (GInitableIface *iface)
 {
   iface->init = meta_compositor_initable_init;
+}
+
+static void
+meta_compositor_dispose (GObject *object)
+{
+  MetaCompositor *compositor;
+  MetaCompositorPrivate *priv;
+
+  compositor = META_COMPOSITOR (object);
+  priv = meta_compositor_get_instance_private (compositor);
+
+  g_clear_pointer (&priv->surfaces, g_hash_table_destroy);
+  g_clear_pointer (&priv->stack, g_list_free);
+
+  G_OBJECT_CLASS (meta_compositor_parent_class)->dispose (object);
 }
 
 static void
@@ -158,6 +246,12 @@ meta_compositor_finalize (GObject *object)
     {
       g_source_remove (priv->redraw_id);
       priv->redraw_id = 0;
+    }
+
+  if (priv->all_damage != None)
+    {
+      XFixesDestroyRegion (xdisplay, priv->all_damage);
+      priv->all_damage = None;
     }
 
   if (priv->windows_redirected)
@@ -212,6 +306,10 @@ meta_compositor_get_property (GObject    *object,
         g_value_set_pointer (value, priv->display);
         break;
 
+      case PROP_COMPOSITED:
+        g_value_set_boolean (value, priv->composited);
+        break;
+
       default:
         G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
         break;
@@ -236,10 +334,34 @@ meta_compositor_set_property (GObject      *object,
         priv->display = g_value_get_pointer (value);
         break;
 
+      case PROP_COMPOSITED:
+        g_assert_not_reached ();
+        break;
+
       default:
         G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
         break;
     }
+}
+
+static gboolean
+meta_compositor_ready_to_redraw (MetaCompositor *compositor)
+{
+  return TRUE;
+}
+
+static void
+meta_compositor_pre_paint (MetaCompositor *compositor)
+{
+  MetaCompositorPrivate *priv;
+  GHashTableIter iter;
+  MetaSurface *surface;
+
+  priv = meta_compositor_get_instance_private (compositor);
+
+  g_hash_table_iter_init (&iter, priv->surfaces);
+  while (g_hash_table_iter_next (&iter, NULL, (gpointer) &surface))
+    meta_surface_pre_paint (surface);
 }
 
 static void
@@ -249,6 +371,11 @@ install_properties (GObjectClass *object_class)
     g_param_spec_pointer ("display", "display", "display",
                          G_PARAM_CONSTRUCT_ONLY | G_PARAM_READWRITE |
                          G_PARAM_STATIC_STRINGS);
+
+  properties[PROP_COMPOSITED] =
+    g_param_spec_boolean ("composited", "composited", "composited",
+                          FALSE,
+                          G_PARAM_READABLE | G_PARAM_STATIC_STRINGS);
 
   g_object_class_install_properties (object_class, LAST_PROP, properties);
 }
@@ -260,9 +387,13 @@ meta_compositor_class_init (MetaCompositorClass *compositor_class)
 
   object_class = G_OBJECT_CLASS (compositor_class);
 
+  object_class->dispose = meta_compositor_dispose;
   object_class->finalize = meta_compositor_finalize;
   object_class->get_property = meta_compositor_get_property;
   object_class->set_property = meta_compositor_set_property;
+
+  compositor_class->ready_to_redraw = meta_compositor_ready_to_redraw;
+  compositor_class->pre_paint = meta_compositor_pre_paint;
 
   install_properties (object_class);
 }
@@ -270,72 +401,55 @@ meta_compositor_class_init (MetaCompositorClass *compositor_class)
 static void
 meta_compositor_init (MetaCompositor *compositor)
 {
-}
+  MetaCompositorPrivate *priv;
 
-MetaCompositor *
-meta_compositor_new (MetaCompositorType  type,
-                     MetaDisplay        *display)
-{
-  GType gtype;
-  MetaCompositor *compositor;
-  GError *error;
+  priv = meta_compositor_get_instance_private (compositor);
 
-  switch (type)
-    {
-      case META_COMPOSITOR_TYPE_NONE:
-        gtype = META_TYPE_COMPOSITOR_NONE;
-        break;
-
-      case META_COMPOSITOR_TYPE_XRENDER:
-        gtype = META_TYPE_COMPOSITOR_XRENDER;
-        break;
-
-      case META_COMPOSITOR_TYPE_VULKAN:
-        gtype = META_TYPE_COMPOSITOR_VULKAN;
-        break;
-
-      default:
-        g_assert_not_reached ();
-        break;
-    }
-
-  error = NULL;
-  compositor = g_initable_new (gtype, NULL, &error, "display", display, NULL);
-
-  if (compositor == NULL)
-    {
-      g_warning ("Failed to create %s: %s", g_type_name (gtype), error->message);
-      g_error_free (error);
-
-      if (type != META_COMPOSITOR_TYPE_NONE)
-        compositor = meta_compositor_new (META_COMPOSITOR_TYPE_NONE, display);
-    }
-
-  g_assert (compositor != NULL);
-
-  return compositor;
+  priv->surfaces = g_hash_table_new_full (g_direct_hash, g_direct_equal,
+                                          NULL, g_object_unref);
 }
 
 void
 meta_compositor_add_window (MetaCompositor *compositor,
                             MetaWindow     *window)
 {
+  MetaCompositorPrivate *priv;
   MetaCompositorClass *compositor_class;
+  MetaSurface *surface;
+
+  g_assert (window != NULL);
+
+  priv = meta_compositor_get_instance_private (compositor);
+
+  /* If already added, ignore */
+  if (g_hash_table_lookup (priv->surfaces, window) != NULL)
+    return;
 
   compositor_class = META_COMPOSITOR_GET_CLASS (compositor);
+  surface = compositor_class->add_window (compositor, window);
 
-  compositor_class->add_window (compositor, window);
+  if (surface == NULL)
+    return;
+
+  g_hash_table_insert (priv->surfaces, window, surface);
+  priv->stack = g_list_prepend (priv->stack, surface);
 }
 
 void
 meta_compositor_remove_window (MetaCompositor *compositor,
                                MetaWindow     *window)
 {
-  MetaCompositorClass *compositor_class;
+  MetaCompositorPrivate *priv;
+  MetaSurface *surface;
 
-  compositor_class = META_COMPOSITOR_GET_CLASS (compositor);
+  priv = meta_compositor_get_instance_private (compositor);
 
-  compositor_class->remove_window (compositor, window);
+  surface = g_hash_table_lookup (priv->surfaces, window);
+  if (surface == NULL)
+    return;
+
+  priv->stack = g_list_remove (priv->stack, surface);
+  g_hash_table_remove (priv->surfaces, window);
 }
 
 void
@@ -343,11 +457,16 @@ meta_compositor_show_window (MetaCompositor *compositor,
                              MetaWindow     *window,
                              MetaEffectType  effect)
 {
-  MetaCompositorClass *compositor_class;
+  MetaCompositorPrivate *priv;
+  MetaSurface *surface;
 
-  compositor_class = META_COMPOSITOR_GET_CLASS (compositor);
+  priv = meta_compositor_get_instance_private (compositor);
 
-  compositor_class->show_window (compositor, window, effect);
+  surface = g_hash_table_lookup (priv->surfaces, window);
+  if (surface == NULL)
+    return;
+
+  meta_surface_show (surface);
 }
 
 void
@@ -355,44 +474,64 @@ meta_compositor_hide_window (MetaCompositor *compositor,
                              MetaWindow     *window,
                              MetaEffectType  effect)
 {
-  MetaCompositorClass *compositor_class;
+  MetaCompositorPrivate *priv;
+  MetaSurface *surface;
 
-  compositor_class = META_COMPOSITOR_GET_CLASS (compositor);
+  priv = meta_compositor_get_instance_private (compositor);
 
-  compositor_class->hide_window (compositor, window, effect);
+  surface = g_hash_table_lookup (priv->surfaces, window);
+  if (surface == NULL)
+    return;
+
+  meta_surface_hide (surface);
 }
 
 void
 meta_compositor_window_opacity_changed (MetaCompositor *compositor,
                                         MetaWindow     *window)
 {
-  MetaCompositorClass *compositor_class;
+  MetaCompositorPrivate *priv;
+  MetaSurface *surface;
 
-  compositor_class = META_COMPOSITOR_GET_CLASS (compositor);
+  priv = meta_compositor_get_instance_private (compositor);
 
-  compositor_class->window_opacity_changed (compositor, window);
+  surface = g_hash_table_lookup (priv->surfaces, window);
+  if (surface == NULL)
+    return;
+
+  meta_surface_opacity_changed (surface);
 }
 
 void
 meta_compositor_window_opaque_region_changed (MetaCompositor *compositor,
                                               MetaWindow     *window)
 {
-  MetaCompositorClass *compositor_class;
+  MetaCompositorPrivate *priv;
+  MetaSurface *surface;
 
-  compositor_class = META_COMPOSITOR_GET_CLASS (compositor);
+  priv = meta_compositor_get_instance_private (compositor);
 
-  compositor_class->window_opaque_region_changed (compositor, window);
+  surface = g_hash_table_lookup (priv->surfaces, window);
+  if (surface == NULL)
+    return;
+
+  meta_surface_opaque_region_changed (surface);
 }
 
 void
 meta_compositor_window_shape_region_changed (MetaCompositor *compositor,
                                              MetaWindow     *window)
 {
-  MetaCompositorClass *compositor_class;
+  MetaCompositorPrivate *priv;
+  MetaSurface *surface;
 
-  compositor_class = META_COMPOSITOR_GET_CLASS (compositor);
+  priv = meta_compositor_get_instance_private (compositor);
 
-  compositor_class->window_shape_region_changed (compositor, window);
+  surface = g_hash_table_lookup (priv->surfaces, window);
+  if (surface == NULL)
+    return;
+
+  meta_surface_shape_region_changed (surface);
 }
 
 void
@@ -400,11 +539,6 @@ meta_compositor_set_updates_frozen (MetaCompositor *compositor,
                                     MetaWindow     *window,
                                     gboolean        updates_frozen)
 {
-  MetaCompositorClass *compositor_class;
-
-  compositor_class = META_COMPOSITOR_GET_CLASS (compositor);
-
-  compositor_class->set_updates_frozen (compositor, window, updates_frozen);
 }
 
 void
@@ -412,44 +546,89 @@ meta_compositor_process_event (MetaCompositor *compositor,
                                XEvent         *event,
                                MetaWindow     *window)
 {
+  MetaCompositorPrivate *priv;
   MetaCompositorClass *compositor_class;
+  int damage_event_base;
+
+  priv = meta_compositor_get_instance_private (compositor);
 
   compositor_class = META_COMPOSITOR_GET_CLASS (compositor);
-
   compositor_class->process_event (compositor, event, window);
+
+  damage_event_base = meta_display_get_damage_event_base (priv->display);
+
+  if (event->type == Expose)
+    {
+      XExposeEvent *expose_event;
+      MetaSurface *surface;
+      XRectangle rect;
+      XserverRegion region;
+
+      expose_event = (XExposeEvent *) event;
+
+      if (window != NULL)
+        surface = g_hash_table_lookup (priv->surfaces, window);
+      else
+        surface = find_surface_by_xwindow (compositor, expose_event->window);
+
+      rect.x = expose_event->x;
+      rect.y = expose_event->y;
+      rect.width = expose_event->width;
+      rect.height = expose_event->height;
+
+      if (surface != NULL)
+        {
+          rect.x += meta_surface_get_x (surface);
+          rect.y += meta_surface_get_y (surface);
+        }
+
+      region = XFixesCreateRegion (priv->display->xdisplay, &rect, 1);
+      meta_compositor_add_damage (compositor, "XExposeEvent", region);
+      XFixesDestroyRegion (priv->display->xdisplay, region);
+    }
+  else if (event->type == damage_event_base + XDamageNotify)
+    {
+      XDamageNotifyEvent *damage_event;
+      MetaSurface *surface;
+
+      damage_event = (XDamageNotifyEvent *) event;
+
+      if (window != NULL)
+        surface = g_hash_table_lookup (priv->surfaces, window);
+      else
+        surface = find_surface_by_xwindow (compositor, damage_event->drawable);
+
+      if (surface != NULL)
+        meta_surface_process_damage (surface, damage_event);
+    }
 }
 
 cairo_surface_t *
 meta_compositor_get_window_surface (MetaCompositor *compositor,
                                     MetaWindow     *window)
 {
-  MetaCompositorClass *compositor_class;
+  MetaCompositorPrivate *priv;
+  MetaSurface *surface;
 
-  compositor_class = META_COMPOSITOR_GET_CLASS (compositor);
+  priv = meta_compositor_get_instance_private (compositor);
 
-  return compositor_class->get_window_surface (compositor, window);
+  surface = g_hash_table_lookup (priv->surfaces, window);
+  if (surface == NULL)
+    return NULL;
+
+  return meta_surface_get_image (surface);
 }
 
 void
 meta_compositor_maximize_window (MetaCompositor *compositor,
                                  MetaWindow     *window)
 {
-  MetaCompositorClass *compositor_class;
-
-  compositor_class = META_COMPOSITOR_GET_CLASS (compositor);
-
-  compositor_class->maximize_window (compositor, window);
 }
 
 void
 meta_compositor_unmaximize_window (MetaCompositor *compositor,
                                    MetaWindow     *window)
 {
-  MetaCompositorClass *compositor_class;
-
-  compositor_class = META_COMPOSITOR_GET_CLASS (compositor);
-
-  compositor_class->unmaximize_window (compositor, window);
 }
 
 void
@@ -466,22 +645,73 @@ void
 meta_compositor_sync_stack (MetaCompositor *compositor,
                             GList          *stack)
 {
-  MetaCompositorClass *compositor_class;
+  MetaCompositorPrivate *priv;
+  gboolean changed;
+  GList *l1;
+  GList *l2;
 
-  compositor_class = META_COMPOSITOR_GET_CLASS (compositor);
+  priv = meta_compositor_get_instance_private (compositor);
 
-  compositor_class->sync_stack (compositor, stack);
+  if (priv->stack == NULL)
+    return;
+
+  changed = FALSE;
+  for (l1 = stack, l2 = priv->stack;
+       l1 != NULL && l2 != NULL;
+       l1 = l1->next, l2 = l2->next)
+    {
+      MetaWindow *window;
+      MetaSurface *surface;
+
+      window = META_WINDOW (l1->data);
+      surface = g_hash_table_lookup (priv->surfaces, window);
+
+      if (surface != META_SURFACE (l2->data))
+        {
+          changed = TRUE;
+          break;
+        }
+    }
+
+  if (!changed)
+    return;
+
+  for (l1 = stack; l1 != NULL; l1 = l1->next)
+    {
+      MetaWindow *window;
+      MetaSurface *surface;
+
+      window = META_WINDOW (l1->data);
+      surface = g_hash_table_lookup (priv->surfaces, window);
+
+      if (surface == NULL)
+        {
+          g_warning ("Failed to find MetaSurface for MetaWindow %p", window);
+          continue;
+        }
+
+      priv->stack = g_list_remove (priv->stack, surface);
+      priv->stack = g_list_prepend (priv->stack, surface);
+    }
+
+  priv->stack = g_list_reverse (priv->stack);
+  meta_compositor_damage_screen (compositor);
 }
 
 void
 meta_compositor_sync_window_geometry (MetaCompositor *compositor,
                                       MetaWindow     *window)
 {
-  MetaCompositorClass *compositor_class;
+  MetaCompositorPrivate *priv;
+  MetaSurface *surface;
 
-  compositor_class = META_COMPOSITOR_GET_CLASS (compositor);
+  priv = meta_compositor_get_instance_private (compositor);
 
-  compositor_class->sync_window_geometry (compositor, window);
+  surface = g_hash_table_lookup (priv->surfaces, window);
+  if (surface == NULL)
+    return;
+
+  meta_surface_sync_geometry (surface);
 }
 
 gboolean
@@ -504,7 +734,62 @@ meta_compositor_is_our_xwindow (MetaCompositor *compositor,
 gboolean
 meta_compositor_is_composited (MetaCompositor *compositor)
 {
-  return !META_IS_COMPOSITOR_NONE (compositor);
+  MetaCompositorPrivate *priv;
+
+  priv = meta_compositor_get_instance_private (compositor);
+
+  return priv->composited;
+}
+
+void
+meta_compositor_set_composited (MetaCompositor *compositor,
+                                gboolean        composited)
+{
+  MetaCompositorPrivate *priv;
+
+  priv = meta_compositor_get_instance_private (compositor);
+
+  if (priv->composited == composited)
+    return;
+
+  priv->composited = composited;
+
+  g_object_notify_by_pspec (G_OBJECT (compositor), properties[PROP_COMPOSITED]);
+}
+
+gboolean
+meta_compositor_check_common_extensions (MetaCompositor  *compositor,
+                                         GError         **error)
+{
+  MetaCompositorPrivate *priv;
+
+  priv = meta_compositor_get_instance_private (compositor);
+
+  if (!priv->display->have_composite)
+    {
+      g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED,
+                   "Missing composite extension required for compositing");
+
+      return FALSE;
+    }
+
+  if (!priv->display->have_damage)
+    {
+      g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED,
+                   "Missing damage extension required for compositing");
+
+      return FALSE;
+    }
+
+  if (!priv->display->have_xfixes)
+    {
+      g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED,
+                   "Missing xfixes extension required for compositing");
+
+      return FALSE;
+    }
+
+  return TRUE;
 }
 
 gboolean
@@ -615,6 +900,81 @@ meta_compositor_get_display (MetaCompositor *compositor)
   priv = meta_compositor_get_instance_private (compositor);
 
   return priv->display;
+}
+
+/**
+ * meta_compositor_get_stack:
+ * @compositor: a #MetaCompositor
+ *
+ * Returns the the list of surfaces in stacking order.
+ *
+ * Returns: (transfer none) (element-type MetaSurface): the list of surfaces
+ */
+GList *
+meta_compositor_get_stack (MetaCompositor *compositor)
+{
+  MetaCompositorPrivate *priv;
+
+  priv = meta_compositor_get_instance_private (compositor);
+
+  return priv->stack;
+}
+
+/**
+ * meta_compositor_add_damage:
+ * @compositor: a #MetaCompositor
+ * @name: the name of damage region
+ * @damage: the damage region
+ *
+ * Adds damage region and queues a redraw.
+ */
+void
+meta_compositor_add_damage (MetaCompositor *compositor,
+                            const gchar    *name,
+                            XserverRegion   damage)
+{
+  MetaCompositorPrivate *priv;
+  Display *xdisplay;
+
+  priv = meta_compositor_get_instance_private (compositor);
+  xdisplay = priv->display->xdisplay;
+
+  debug_damage_region (compositor, name, damage);
+
+  if (priv->all_damage != None)
+    {
+      XFixesUnionRegion (xdisplay, priv->all_damage, priv->all_damage, damage);
+    }
+  else
+    {
+      priv->all_damage = XFixesCreateRegion (xdisplay, NULL, 0);
+      XFixesCopyRegion (xdisplay, priv->all_damage, damage);
+    }
+
+  meta_compositor_queue_redraw (compositor);
+}
+
+void
+meta_compositor_damage_screen (MetaCompositor *compositor)
+{
+  MetaCompositorPrivate *priv;
+  Display *xdisplay;
+  int screen_width;
+  int screen_height;
+  XserverRegion screen_region;
+
+  priv = meta_compositor_get_instance_private (compositor);
+  xdisplay = priv->display->xdisplay;
+
+  meta_screen_get_size (priv->display->screen, &screen_width, &screen_height);
+
+  screen_region = XFixesCreateRegion (xdisplay, &(XRectangle) {
+                                        .width = screen_width,
+                                        .height = screen_height
+                                      }, 1);
+
+  meta_compositor_add_damage (compositor, "damage_screen", screen_region);
+  XFixesDestroyRegion (xdisplay, screen_region);
 }
 
 void

@@ -36,7 +36,6 @@
 #include "effects.h"
 #include "util.h"
 
-#include <gdk/gdkx.h>
 #include <X11/keysym.h>
 #include <string.h>
 #include <stdio.h>
@@ -1352,13 +1351,6 @@ meta_display_process_key_event (MetaDisplay *display,
             case META_GRAB_OP_CLICKING_UNMAXIMIZE:
             case META_GRAB_OP_CLICKING_DELETE:
             case META_GRAB_OP_CLICKING_MENU:
-            case META_GRAB_OP_CLICKING_APPMENU:
-            case META_GRAB_OP_CLICKING_SHADE:
-            case META_GRAB_OP_CLICKING_UNSHADE:
-            case META_GRAB_OP_CLICKING_ABOVE:
-            case META_GRAB_OP_CLICKING_UNABOVE:
-            case META_GRAB_OP_CLICKING_STICK:
-            case META_GRAB_OP_CLICKING_UNSTICK:
               break;
 
             default:
@@ -1401,9 +1393,7 @@ process_mouse_move_resize_grab (MetaDisplay *display,
       /* End move or resize and restore to original state.  If the
        * window was a maximized window that had been "shaken loose" we
        * need to remaximize it.  In normal cases, we need to do a
-       * moveresize now to get the position back to the original.  In
-       * wireframe mode, we just need to set grab_was_cancelled to tru
-       * to avoid avoid moveresizing to the position of the wireframe.
+       * moveresize now to get the position back to the original.
        */
       if (window->shaken_loose)
         meta_window_maximize (window,
@@ -1411,15 +1401,13 @@ process_mouse_move_resize_grab (MetaDisplay *display,
                               META_MAXIMIZE_VERTICAL);
       else if (window->tile_mode == META_TILE_LEFT || window->tile_mode == META_TILE_RIGHT)
         meta_window_tile (window);
-      else if (!display->grab_wireframe_active)
+      else
         meta_window_move_resize (display->grab_window,
                                  TRUE,
                                  display->grab_initial_window_pos.x,
                                  display->grab_initial_window_pos.y,
                                  display->grab_initial_window_pos.width,
                                  display->grab_initial_window_pos.height);
-      else
-        display->grab_was_cancelled = TRUE;
 
       /* End grab */
       return FALSE;
@@ -1450,15 +1438,7 @@ process_keyboard_move_grab (MetaDisplay *display,
   if (is_modifier (display, event->xkey.keycode))
     return TRUE;
 
-  if (display->grab_wireframe_active)
-    {
-      x = display->grab_wireframe_rect.x;
-      y = display->grab_wireframe_rect.y;
-    }
-  else
-    {
-      meta_window_get_position (window, &x, &y);
-    }
+  meta_window_get_position (window, &x, &y);
 
   smart_snap = (event->xkey.state & ShiftMask) != 0;
 
@@ -1477,23 +1457,19 @@ process_keyboard_move_grab (MetaDisplay *display,
       /* End move and restore to original state.  If the window was a
        * maximized window that had been "shaken loose" we need to
        * remaximize it.  In normal cases, we need to do a moveresize
-       * now to get the position back to the original.  In wireframe
-       * mode, we just need to set grab_was_cancelled to tru to avoid
-       * avoid moveresizing to the position of the wireframe.
+       * now to get the position back to the original.
        */
       if (window->shaken_loose)
         meta_window_maximize (window,
                               META_MAXIMIZE_HORIZONTAL |
                               META_MAXIMIZE_VERTICAL);
-      else if (!display->grab_wireframe_active)
+      else
         meta_window_move_resize (display->grab_window,
                                  TRUE,
                                  display->grab_initial_window_pos.x,
                                  display->grab_initial_window_pos.y,
                                  display->grab_initial_window_pos.width,
                                  display->grab_initial_window_pos.height);
-      else
-        display->grab_was_cancelled = TRUE;
     }
 
   /* When moving by increments, we still snap to edges if the move
@@ -1548,30 +1524,17 @@ process_keyboard_move_grab (MetaDisplay *display,
                   "Computed new window location %d,%d due to keypress\n",
                   x, y);
 
-      if (display->grab_wireframe_active)
-        old_rect = display->grab_wireframe_rect;
-      else
-        meta_window_get_client_root_coords (window, &old_rect);
+      meta_window_get_client_root_coords (window, &old_rect);
 
       meta_window_edge_resistance_for_move (window,
                                             old_rect.x,
                                             old_rect.y,
                                             &x,
                                             &y,
-                                            NULL,
                                             smart_snap,
                                             TRUE);
 
-      if (display->grab_wireframe_active)
-        {
-          meta_window_update_wireframe (window, x, y,
-                                        display->grab_wireframe_rect.width,
-                                        display->grab_wireframe_rect.height);
-        }
-      else
-        {
-          meta_window_move (window, TRUE, x, y);
-        }
+      meta_window_move (window, TRUE, x, y);
 
       meta_window_update_keyboard_move (window);
     }
@@ -1720,13 +1683,6 @@ process_keyboard_resize_grab_op_change (MetaDisplay *display,
     case META_GRAB_OP_CLICKING_UNMAXIMIZE:
     case META_GRAB_OP_CLICKING_DELETE:
     case META_GRAB_OP_CLICKING_MENU:
-    case META_GRAB_OP_CLICKING_APPMENU:
-    case META_GRAB_OP_CLICKING_SHADE:
-    case META_GRAB_OP_CLICKING_UNSHADE:
-    case META_GRAB_OP_CLICKING_ABOVE:
-    case META_GRAB_OP_CLICKING_UNABOVE:
-    case META_GRAB_OP_CLICKING_STICK:
-    case META_GRAB_OP_CLICKING_UNSTICK:
       g_assert_not_reached ();
       break;
 
@@ -1770,21 +1726,13 @@ process_keyboard_resize_grab (MetaDisplay *display,
 
   if (keysym == XK_Escape)
     {
-      /* End resize and restore to original state.  If not in
-       * wireframe mode, we need to do a moveresize now to get the
-       * position back to the original.  If we are in wireframe mode,
-       * we need to avoid moveresizing to the position of the
-       * wireframe.
-       */
-      if (!display->grab_wireframe_active)
-        meta_window_move_resize (display->grab_window,
-                                 TRUE,
-                                 display->grab_initial_window_pos.x,
-                                 display->grab_initial_window_pos.y,
-                                 display->grab_initial_window_pos.width,
-                                 display->grab_initial_window_pos.height);
-      else
-        display->grab_was_cancelled = TRUE;
+      /* End resize and restore to original state. */
+      meta_window_move_resize (display->grab_window,
+                               TRUE,
+                               display->grab_initial_window_pos.x,
+                               display->grab_initial_window_pos.y,
+                               display->grab_initial_window_pos.width,
+                               display->grab_initial_window_pos.height);
 
       return FALSE;
     }
@@ -1793,16 +1741,8 @@ process_keyboard_resize_grab (MetaDisplay *display,
                                               event, keysym))
     return TRUE;
 
-  if (display->grab_wireframe_active)
-    {
-      width = display->grab_wireframe_rect.width;
-      height = display->grab_wireframe_rect.height;
-    }
-  else
-    {
-      width = window->rect.width;
-      height = window->rect.height;
-    }
+  width = window->rect.width;
+  height = window->rect.height;
 
   gravity = meta_resize_gravity_from_grab_op (display->grab_op);
 
@@ -1979,10 +1919,7 @@ process_keyboard_resize_grab (MetaDisplay *display,
                   "%dx%d, gravity %s\n",
                   width, height, meta_gravity_to_string (gravity));
 
-      if (display->grab_wireframe_active)
-        old_rect = display->grab_wireframe_rect;
-      else
-        old_rect = window->rect;  /* Don't actually care about x,y */
+      old_rect = window->rect; /* Don't actually care about x,y */
 
       /* Do any edge resistance/snapping */
       meta_window_edge_resistance_for_resize (window,
@@ -1991,36 +1928,19 @@ process_keyboard_resize_grab (MetaDisplay *display,
                                               &width,
                                               &height,
                                               gravity,
-                                              NULL,
                                               smart_snap,
                                               TRUE);
 
-      if (display->grab_wireframe_active)
-        {
-          MetaRectangle new_position;
-          meta_rectangle_resize_with_gravity (&display->grab_wireframe_rect,
-                                              &new_position,
-                                              gravity,
-                                              width,
-                                              height);
-          meta_window_update_wireframe (window,
-                                        new_position.x,
-                                        new_position.y,
-                                        new_position.width,
-                                        new_position.height);
-        }
-      else
-        {
-          /* We don't need to update unless the specified width and height
-           * are actually different from what we had before.
-           */
-          if (window->rect.width != width || window->rect.height != height)
-            meta_window_resize_with_gravity (window,
-                                             TRUE,
-                                             width,
-                                             height,
-                                             gravity);
-        }
+      /* We don't need to update unless the specified width and height
+       * are actually different from what we had before.
+       */
+      if (window->rect.width != width || window->rect.height != height)
+        meta_window_resize_with_gravity (window,
+                                         TRUE,
+                                         width,
+                                         height,
+                                         gravity);
+
       meta_window_update_keyboard_resize (window, FALSE);
     }
 
@@ -2760,34 +2680,6 @@ handle_panel (MetaDisplay    *display,
   meta_error_trap_pop (display);
 }
 
-static GdkEvent *
-key_press_event_new (XEvent *xevent)
-{
-  GdkDisplay *display;
-  GdkSeat *seat;
-  GdkWindow *window;
-  GdkDevice *device;
-  GdkEvent *event;
-
-  display = gdk_display_get_default ();
-  seat = gdk_display_get_default_seat (display);
-
-  window = gdk_x11_window_foreign_new_for_display (display, xevent->xkey.window);
-  device = gdk_seat_get_keyboard (seat);
-
-  event = gdk_event_new (GDK_KEY_PRESS);
-
-  event->key.window = window;
-  event->key.send_event = xevent->xkey.send_event ? TRUE : FALSE;
-  event->key.time = xevent->xkey.time;
-  event->key.state = (GdkModifierType) xevent->xkey.state;
-  event->key.hardware_keycode = xevent->xkey.keycode;
-
-  gdk_event_set_device (event, device);
-
-  return event;
-}
-
 static void
 handle_activate_window_menu (MetaDisplay    *display,
                       MetaScreen     *screen,
@@ -2798,18 +2690,9 @@ handle_activate_window_menu (MetaDisplay    *display,
   if (display->focus_window)
     {
       GdkRectangle rect;
-      GdkEvent *gdk_event;
 
-      if (display->focus_window->frame)
-        {
-          rect.x = display->focus_window->rect.x;
-          rect.y = display->focus_window->rect.y;
-        }
-      else
-        {
-          rect.x = 0;
-          rect.y = 0;
-        }
+      meta_window_get_position (display->focus_window,
+                                &rect.x, &rect.y);
 
       rect.width = display->focus_window->rect.width;
       rect.height = 0;
@@ -2823,9 +2706,7 @@ handle_activate_window_menu (MetaDisplay    *display,
                         display->focus_window->custom_frame_extents.right;
         }
 
-      gdk_event = key_press_event_new (event);
-      meta_window_show_menu (display->focus_window, &rect, gdk_event);
-      gdk_event_free (gdk_event);
+      meta_window_show_menu (display->focus_window, &rect, event->xkey.time);
     }
 }
 

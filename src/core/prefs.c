@@ -42,7 +42,7 @@
 #define KEY_TITLEBAR_FONT "titlebar-font"
 #define KEY_NUM_WORKSPACES "num-workspaces"
 #define KEY_WORKSPACE_NAMES "workspace-names"
-#define KEY_COMPOSITOR "compositing-manager"
+#define KEY_COMPOSITING_MANAGER "compositing-manager"
 #define KEY_PLACEMENT_MODE "placement-mode"
 
 /* Keys from "foreign" schemas */
@@ -82,12 +82,11 @@ static gboolean auto_raise = FALSE;
 static gboolean auto_raise_delay = 500;
 static gboolean bell_is_visible = FALSE;
 static gboolean bell_is_audible = TRUE;
-static gboolean reduced_resources = FALSE;
 static gboolean gnome_accessibility = FALSE;
 static gboolean gnome_animations = TRUE;
 static char *cursor_theme = NULL;
 static int   cursor_size = 24;
-static gboolean compositing_manager = TRUE;
+static MetaCompositorType compositor = META_COMPOSITOR_TYPE_XRENDER;
 static gboolean resize_with_right_button = FALSE;
 static gboolean edge_tiling = FALSE;
 static gboolean force_fullscreen = TRUE;
@@ -261,6 +260,13 @@ static MetaEnumPreference preferences_enum[] =
       },
       &current_theme_type,
     },
+    {
+      { "compositor",
+        SCHEMA_METACITY,
+        META_PREF_COMPOSITOR,
+      },
+      &compositor,
+    },
     { { NULL, 0, 0 }, NULL },
   };
 
@@ -315,14 +321,6 @@ static MetaBoolPreference preferences_bool[] =
       FALSE,
     },
     {
-      { "reduced-resources",
-        SCHEMA_METACITY,
-        META_PREF_REDUCED_RESOURCES,
-      },
-      &reduced_resources,
-      FALSE,
-    },
-    {
       { KEY_GNOME_ACCESSIBILITY,
         SCHEMA_INTERFACE,
         META_PREF_GNOME_ACCESSIBILITY,
@@ -337,14 +335,6 @@ static MetaBoolPreference preferences_bool[] =
       },
       &gnome_animations,
       TRUE,
-    },
-    {
-      { "compositing-manager",
-        SCHEMA_METACITY,
-        META_PREF_COMPOSITING_MANAGER,
-      },
-      &compositing_manager,
-      FALSE,
     },
     {
       { "resize-with-right-button",
@@ -811,6 +801,35 @@ init_gtk_theme_name (void)
                     G_CALLBACK (gtk_theme_name_changed), NULL);
 }
 
+static void
+update_compositing_manager (void)
+{
+  GVariant *user_value;
+  gboolean compositing_manager;
+
+  user_value = g_settings_get_user_value (SETTINGS (SCHEMA_METACITY),
+                                          KEY_COMPOSITING_MANAGER);
+
+  if (user_value == NULL)
+    return;
+
+  compositing_manager = g_variant_get_boolean (user_value);
+  g_variant_unref (user_value);
+
+  if (compositing_manager)
+    meta_prefs_set_compositor (META_COMPOSITOR_TYPE_XRENDER);
+  else
+    meta_prefs_set_compositor (META_COMPOSITOR_TYPE_NONE);
+
+  g_settings_reset (SETTINGS (SCHEMA_METACITY), KEY_COMPOSITING_MANAGER);
+}
+
+static void
+init_compositing_manager (void)
+{
+  update_compositing_manager ();
+}
+
 /****************************************************************************/
 /* Initialisation.                                                          */
 /****************************************************************************/
@@ -853,6 +872,7 @@ meta_prefs_init (void)
 
   init_bindings ();
   init_workspace_names ();
+  init_compositing_manager ();
 
   init_gtk_cursor_theme_size ();
   init_gtk_theme_name ();
@@ -878,6 +898,14 @@ settings_changed (GSettings *settings,
       if (update_workspace_names ())
         queue_changed (META_PREF_WORKSPACE_NAMES);
 
+      return;
+    }
+  else if (strcmp (key, KEY_COMPOSITING_MANAGER) == 0)
+    {
+      g_warning (_("Setting “compositing-manager” is deprecated, "
+                   "use the “compositor” instead."));
+
+      update_compositing_manager ();
       return;
     }
 
@@ -1213,9 +1241,6 @@ meta_preference_to_string (MetaPreference pref)
     case META_PREF_VISUAL_BELL_TYPE:
       return "VISUAL_BELL_TYPE";
 
-    case META_PREF_REDUCED_RESOURCES:
-      return "REDUCED_RESOURCES";
-
     case META_PREF_GNOME_ACCESSIBILITY:
       return "GNOME_ACCESSIBILTY";
 
@@ -1228,8 +1253,8 @@ meta_preference_to_string (MetaPreference pref)
     case META_PREF_CURSOR_SIZE:
       return "CURSOR_SIZE";
 
-    case META_PREF_COMPOSITING_MANAGER:
-      return "COMPOSITING_MANAGER";
+    case META_PREF_COMPOSITOR:
+      return "META_PREF_COMPOSITOR";
 
     case META_PREF_RESIZE_WITH_RIGHT_BUTTON:
       return "RESIZE_WITH_RIGHT_BUTTON";
@@ -1585,12 +1610,6 @@ meta_prefs_get_auto_raise_delay (void)
 }
 
 gboolean
-meta_prefs_get_reduced_resources (void)
-{
-  return reduced_resources;
-}
-
-gboolean
 meta_prefs_get_gnome_accessibility (void)
 {
   return gnome_accessibility;
@@ -1653,12 +1672,6 @@ meta_prefs_get_window_binding (const char          *name,
   g_assert_not_reached ();
 }
 
-gboolean
-meta_prefs_get_compositing_manager (void)
-{
-  return compositing_manager;
-}
-
 guint
 meta_prefs_get_mouse_button_resize (void)
 {
@@ -1689,10 +1702,16 @@ meta_prefs_get_alt_tab_thumbnails (void)
   return alt_tab_thumbnails;
 }
 
-void
-meta_prefs_set_compositing_manager (gboolean whether)
+MetaCompositorType
+meta_prefs_get_compositor (void)
 {
-  g_settings_set_boolean (SETTINGS (SCHEMA_METACITY), KEY_COMPOSITOR, whether);
+  return compositor;
+}
+
+void
+meta_prefs_set_compositor (MetaCompositorType type)
+{
+  g_settings_set_enum (SETTINGS (SCHEMA_METACITY), "compositor", type);
 }
 
 void

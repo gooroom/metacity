@@ -122,11 +122,6 @@ is_button_visible (MetaButton     *button,
           visible = TRUE;
         break;
 
-      case META_BUTTON_TYPE_APPMENU:
-        if (flags & META_FRAME_ALLOWS_APPMENU)
-          visible = TRUE;
-        break;
-
       case META_BUTTON_TYPE_MINIMIZE:
         if (flags & META_FRAME_ALLOWS_MINIMIZE)
           visible = TRUE;
@@ -139,36 +134,6 @@ is_button_visible (MetaButton     *button,
 
       case META_BUTTON_TYPE_CLOSE:
         if (flags & META_FRAME_ALLOWS_DELETE)
-          visible = TRUE;
-        break;
-
-      case META_BUTTON_TYPE_SHADE:
-        if ((flags & META_FRAME_ALLOWS_SHADE) && !(flags & META_FRAME_SHADED))
-          visible = TRUE;
-        break;
-
-      case META_BUTTON_TYPE_ABOVE:
-        if (!(flags & META_FRAME_ABOVE))
-          visible = TRUE;
-        break;
-
-      case META_BUTTON_TYPE_STICK:
-        if (!(flags & META_FRAME_STUCK))
-          visible = TRUE;
-        break;
-
-      case META_BUTTON_TYPE_UNSHADE:
-        if ((flags & META_FRAME_ALLOWS_SHADE) && (flags & META_FRAME_SHADED))
-          visible = TRUE;
-        break;
-
-      case META_BUTTON_TYPE_UNABOVE:
-        if (flags & META_FRAME_ABOVE)
-          visible = TRUE;
-        break;
-
-      case META_BUTTON_TYPE_UNSTICK:
-        if (flags & META_FRAME_STUCK)
           visible = TRUE;
         break;
 
@@ -213,17 +178,10 @@ strip_buttons (MetaButtonLayout *layout,
   gint i;
 
   count = 0;
-  types[count++] = META_BUTTON_TYPE_ABOVE;
-  types[count++] = META_BUTTON_TYPE_UNABOVE;
-  types[count++] = META_BUTTON_TYPE_STICK;
-  types[count++] = META_BUTTON_TYPE_UNSTICK;
-  types[count++] = META_BUTTON_TYPE_SHADE;
-  types[count++] = META_BUTTON_TYPE_UNSHADE;
   types[count++] = META_BUTTON_TYPE_MINIMIZE;
   types[count++] = META_BUTTON_TYPE_MAXIMIZE;
   types[count++] = META_BUTTON_TYPE_CLOSE;
   types[count++] = META_BUTTON_TYPE_MENU;
-  types[count++] = META_BUTTON_TYPE_APPMENU;
 
   for (i = 0; i < count; i++)
     {

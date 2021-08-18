@@ -47,7 +47,6 @@
 #include "bell.h"
 #include "effects.h"
 #include "meta-compositor.h"
-#include <gdk/gdkx.h>
 #include <libmetacity/meta-frame-borders.h>
 #include <X11/Xatom.h>
 #include <X11/cursorfont.h>
@@ -66,6 +65,15 @@
 #include <X11/extensions/Xdamage.h>
 #include <X11/extensions/Xfixes.h>
 #include <string.h>
+
+#include "compositor/meta-compositor-none.h"
+#include "compositor/meta-compositor-xrender.h"
+#include "compositor/meta-compositor-xpresent.h"
+#include "compositor/meta-compositor-external.h"
+
+#ifdef HAVE_VULKAN
+#include "compositor/meta-compositor-vulkan.h"
+#endif
 
 #define GRAB_OP_IS_WINDOW_SWITCH(g)                     \
         (g == META_GRAB_OP_KEYBOARD_TABBING_NORMAL  ||  \
@@ -237,41 +245,143 @@ sn_error_trap_pop (SnDisplay *sn_display,
 #endif
 
 static void
-update_compositor (MetaDisplay *display,
-                   gboolean     composite_windows)
+reframe_func (MetaScreen *screen,
+              MetaWindow *window,
+              gpointer    user_data)
+{
+  meta_window_reframe (window);
+}
+
+static void
+notify_composited_cb (MetaCompositor *compositor,
+                      GParamSpec     *pspec,
+                      MetaDisplay    *display)
+{
+  gboolean composited;
+
+  meta_screen_foreach_window (display->screen, reframe_func, NULL);
+
+  composited = meta_compositor_is_composited (display->compositor);
+  meta_ui_set_composited (display->screen->ui, composited);
+}
+
+static MetaCompositorType
+get_compositor_type (MetaDisplay *display)
 {
   const gchar *compositor;
   MetaCompositorType type;
-  gboolean composited;
-
-  if (display->compositor != NULL)
-    g_object_unref (display->compositor);
 
   compositor = g_getenv ("META_COMPOSITOR");
+
   if (compositor != NULL)
     {
       if (g_strcmp0 (compositor, "vulkan") == 0)
         type = META_COMPOSITOR_TYPE_VULKAN;
       else if (g_strcmp0 (compositor, "xrender") == 0)
         type = META_COMPOSITOR_TYPE_XRENDER;
+      else if (g_strcmp0 (compositor, "xpresent") == 0)
+        type = META_COMPOSITOR_TYPE_XPRESENT;
+      else if (g_strcmp0 (compositor, "external") == 0)
+        type = META_COMPOSITOR_TYPE_EXTERNAL;
       else
         type = META_COMPOSITOR_TYPE_NONE;
     }
   else
     {
-      if (meta_prefs_get_compositing_manager ())
-        type = META_COMPOSITOR_TYPE_XRENDER;
-      else
-        type = META_COMPOSITOR_TYPE_NONE;
+      type = meta_prefs_get_compositor ();
     }
 
-  display->compositor = meta_compositor_new (type, display);
+  return type;
+}
 
-  if (composite_windows)
-    meta_screen_composite_all_windows (display->screen);
+static MetaCompositor *
+create_compositor (MetaDisplay         *display,
+                   MetaCompositorType   type,
+                   GError             **error)
+{
+  MetaCompositor *compositor;
+
+  compositor = NULL;
+
+  switch (type)
+    {
+      case META_COMPOSITOR_TYPE_NONE:
+        compositor = meta_compositor_none_new (display, error);
+        break;
+
+      case META_COMPOSITOR_TYPE_XRENDER:
+        compositor = meta_compositor_xrender_new (display, error);
+        break;
+
+      case META_COMPOSITOR_TYPE_XPRESENT:
+        compositor = meta_compositor_xpresent_new (display, error);
+        break;
+
+      case META_COMPOSITOR_TYPE_EXTERNAL:
+        compositor = meta_compositor_external_new (display, error);
+        break;
+
+      case META_COMPOSITOR_TYPE_VULKAN:
+#ifdef HAVE_VULKAN
+        compositor = meta_compositor_vulkan_new (display, error);
+#else
+        g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED,
+                             "Compiled without Vulkan support");
+#endif
+        break;
+
+      default:
+        g_assert_not_reached ();
+        break;
+    }
+
+  return compositor;
+}
+
+static void
+update_compositor (MetaDisplay *display,
+                   gboolean     composite_windows)
+{
+  GError *error;
+  gboolean old_composited;
+  gboolean composited;
+
+  old_composited = FALSE;
+  if (display->compositor != NULL)
+    {
+      old_composited = meta_compositor_is_composited (display->compositor);
+      g_object_unref (display->compositor);
+    }
+
+  error = NULL;
+  display->compositor = create_compositor (display,
+                                           get_compositor_type (display),
+                                           &error);
+
+  if (error != NULL)
+    {
+      g_warning ("Failed to create compositor: %s", error->message);
+      g_error_free (error);
+
+      g_assert (display->compositor == NULL);
+      display->compositor = create_compositor (display,
+                                               META_COMPOSITOR_TYPE_NONE,
+                                               NULL);
+
+      g_assert (display->compositor != NULL);
+    }
+
+  g_signal_connect (display->compositor, "notify::composited",
+                    G_CALLBACK (notify_composited_cb), display);
 
   composited = meta_compositor_is_composited (display->compositor);
   meta_ui_set_composited (display->screen->ui, composited);
+
+  if (old_composited != composited)
+    meta_screen_foreach_window (display->screen, reframe_func, NULL);
+
+  if (composite_windows)
+    meta_screen_composite_all_windows (display->screen);
 }
 
 /**
@@ -417,7 +527,6 @@ meta_display_open (void)
 #endif
 
   the_display->grab_op = META_GRAB_OP_NONE;
-  the_display->grab_wireframe_active = FALSE;
   the_display->grab_window = NULL;
   the_display->grab_screen = NULL;
   the_display->grab_resize_popup = NULL;
@@ -977,13 +1086,6 @@ grab_op_is_mouse_only (MetaGrabOp op)
     case META_GRAB_OP_CLICKING_UNMAXIMIZE:
     case META_GRAB_OP_CLICKING_DELETE:
     case META_GRAB_OP_CLICKING_MENU:
-    case META_GRAB_OP_CLICKING_APPMENU:
-    case META_GRAB_OP_CLICKING_SHADE:
-    case META_GRAB_OP_CLICKING_UNSHADE:
-    case META_GRAB_OP_CLICKING_ABOVE:
-    case META_GRAB_OP_CLICKING_UNABOVE:
-    case META_GRAB_OP_CLICKING_STICK:
-    case META_GRAB_OP_CLICKING_UNSTICK:
       return FALSE;
 
     default:
@@ -1030,13 +1132,6 @@ meta_grab_op_is_mouse (MetaGrabOp op)
     case META_GRAB_OP_CLICKING_UNMAXIMIZE:
     case META_GRAB_OP_CLICKING_DELETE:
     case META_GRAB_OP_CLICKING_MENU:
-    case META_GRAB_OP_CLICKING_APPMENU:
-    case META_GRAB_OP_CLICKING_SHADE:
-    case META_GRAB_OP_CLICKING_UNSHADE:
-    case META_GRAB_OP_CLICKING_ABOVE:
-    case META_GRAB_OP_CLICKING_UNABOVE:
-    case META_GRAB_OP_CLICKING_STICK:
-    case META_GRAB_OP_CLICKING_UNSTICK:
       return FALSE;
 
     default:
@@ -1083,13 +1178,6 @@ grab_op_is_keyboard (MetaGrabOp op)
     case META_GRAB_OP_CLICKING_UNMAXIMIZE:
     case META_GRAB_OP_CLICKING_DELETE:
     case META_GRAB_OP_CLICKING_MENU:
-    case META_GRAB_OP_CLICKING_APPMENU:
-    case META_GRAB_OP_CLICKING_SHADE:
-    case META_GRAB_OP_CLICKING_UNSHADE:
-    case META_GRAB_OP_CLICKING_ABOVE:
-    case META_GRAB_OP_CLICKING_UNABOVE:
-    case META_GRAB_OP_CLICKING_STICK:
-    case META_GRAB_OP_CLICKING_UNSTICK:
       return FALSE;
 
     default:
@@ -1136,13 +1224,6 @@ meta_grab_op_is_resizing (MetaGrabOp op)
     case META_GRAB_OP_CLICKING_UNMAXIMIZE:
     case META_GRAB_OP_CLICKING_DELETE:
     case META_GRAB_OP_CLICKING_MENU:
-    case META_GRAB_OP_CLICKING_APPMENU:
-    case META_GRAB_OP_CLICKING_SHADE:
-    case META_GRAB_OP_CLICKING_UNSHADE:
-    case META_GRAB_OP_CLICKING_ABOVE:
-    case META_GRAB_OP_CLICKING_UNABOVE:
-    case META_GRAB_OP_CLICKING_STICK:
-    case META_GRAB_OP_CLICKING_UNSTICK:
       return FALSE;
 
     default:
@@ -1189,13 +1270,6 @@ meta_grab_op_is_moving (MetaGrabOp op)
     case META_GRAB_OP_CLICKING_UNMAXIMIZE:
     case META_GRAB_OP_CLICKING_DELETE:
     case META_GRAB_OP_CLICKING_MENU:
-    case META_GRAB_OP_CLICKING_APPMENU:
-    case META_GRAB_OP_CLICKING_SHADE:
-    case META_GRAB_OP_CLICKING_UNSHADE:
-    case META_GRAB_OP_CLICKING_ABOVE:
-    case META_GRAB_OP_CLICKING_UNABOVE:
-    case META_GRAB_OP_CLICKING_STICK:
-    case META_GRAB_OP_CLICKING_UNSTICK:
       return FALSE;
 
     default:
@@ -1379,39 +1453,6 @@ meta_display_queue_autoraise_callback (MetaDisplay *display,
   display->autoraise_window = window;
 }
 
-static GdkEvent *
-button_press_event_new (XEvent *xevent,
-                        gint    scale)
-{
-  GdkDisplay *display;
-  GdkSeat *seat;
-  GdkWindow *window;
-  GdkDevice *device;
-  GdkEvent *event;
-
-  display = gdk_display_get_default ();
-  seat = gdk_display_get_default_seat (display);
-
-  window = gdk_x11_window_lookup_for_display (display, xevent->xbutton.window);
-  device = gdk_seat_get_pointer (seat);
-
-  event = gdk_event_new (GDK_BUTTON_PRESS);
-
-  event->button.window = window ? g_object_ref (window) : NULL;
-  event->button.send_event = xevent->xbutton.send_event ? TRUE : FALSE;
-  event->button.time = xevent->xbutton.time;
-  event->button.x = xevent->xbutton.x / scale;
-  event->button.y = xevent->xbutton.y / scale;
-  event->button.state = (GdkModifierType) xevent->xbutton.state;
-  event->button.button = xevent->xbutton.button;
-  event->button.x_root = xevent->xbutton.x_root / scale;
-  event->button.y_root = xevent->xbutton.y_root / scale;
-
-  gdk_event_set_device (event, device);
-
-  return event;
-}
-
 static void
 update_focus_window (MetaDisplay *display,
                      MetaWindow  *window,
@@ -1503,7 +1544,7 @@ request_xserver_input_focus_change (MetaDisplay *display,
 
   meta_error_trap_push (display);
 
-  /* In order for mutter to know that the focus request succeeded, we track
+  /* In order for Metacity to know that the focus request succeeded, we track
    * the serial of the "focus request" we made, but if we take the serial
    * of the XSetInputFocus request, then there's no way to determine the
    * difference between focus events as a result of the SetInputFocus and
@@ -2001,21 +2042,16 @@ event_callback (XEvent   *event,
           else if (event->xbutton.button == meta_prefs_get_mouse_button_menu())
             {
               GdkRectangle rect;
-              gint scale;
-              GdkEvent *gdk_event;
 
               if (meta_prefs_get_raise_on_click ())
                 meta_window_raise (window);
 
-              rect.x = event->xbutton.x;
-              rect.y = event->xbutton.y;
+              rect.x = event->xbutton.x_root;
+              rect.y = event->xbutton.y_root;
               rect.width = 0;
               rect.height = 0;
 
-              scale = meta_ui_get_scale (display->screen->ui);
-              gdk_event = button_press_event_new (event, scale);
-              meta_window_show_menu (window, &rect, gdk_event);
-              gdk_event_free (gdk_event);
+              meta_window_show_menu (window, &rect, event->xbutton.time);
             }
 
           if (!frame_was_receiver && unmodified)
@@ -2172,19 +2208,6 @@ event_callback (XEvent   *event,
                                                    NULL,
                                                    meta_display_get_current_time_roundtrip (display));
             }
-          else if (event->type == FocusIn &&
-              event->xfocus.mode == NotifyNormal &&
-              event->xfocus.detail == NotifyInferior)
-            {
-              meta_topic (META_DEBUG_FOCUS,
-                          "Focus got set to root window, probably due to "
-                          "gnome-session logout dialog usage (see bug "
-                          "153220).  Setting the default focus window.\n");
-              meta_workspace_focus_default_window (screen->active_workspace,
-                                                   NULL,
-                                                   meta_display_get_current_time_roundtrip (display));
-            }
-
         }
       break;
     case KeymapNotify:
@@ -2260,7 +2283,7 @@ event_callback (XEvent   *event,
 
           if (!frame_was_receiver)
             {
-              if (window->unmaps_pending == 0)
+              if (!meta_window_remove_pending_unmap (window, event->xany.serial))
                 {
                   meta_topic (META_DEBUG_WINDOW_STATE,
                               "Window %s withdrawn\n",
@@ -2273,10 +2296,9 @@ event_callback (XEvent   *event,
                 }
               else
                 {
-                  window->unmaps_pending -= 1;
                   meta_topic (META_DEBUG_WINDOW_STATE,
                               "Received pending unmap, %d now pending\n",
-                              window->unmaps_pending);
+                              g_list_length (window->unmaps_pending));
                 }
             }
         }
@@ -2291,45 +2313,41 @@ event_callback (XEvent   *event,
           window = meta_window_new (display, event->xmap.window, FALSE,
                                     META_EFFECT_TYPE_CREATE);
         }
+      else if (window && window->restore_focus_on_map)
+        {
+          meta_window_focus (window,
+                             meta_display_get_current_time_roundtrip (display));
+        }
       break;
     case MapRequest:
       if (window == NULL)
         {
           window = meta_window_new (display, event->xmaprequest.window, FALSE,
                                     META_EFFECT_TYPE_CREATE);
-
-          /* The window might have initial iconic state, but this is a
-           * MapRequest, fall through to ensure it is unminimized in
-           * that case.
-           */
         }
-      else if (frame_was_receiver)
+      /* if frame was receiver it's some malicious send event or something */
+      else if (!frame_was_receiver && window)
         {
-          g_warning ("Map requests on the frame window are unexpected");
-          break;
-        }
-
-      /* Double check that creating the MetaWindow succeeded */
-      if (window == NULL)
-        break;
-
-      meta_verbose ("MapRequest on %s mapped = %d minimized = %d\n",
-                    window->desc, window->mapped, window->minimized);
-
-      if (window->minimized)
-        {
-          meta_window_unminimize (window);
-          if (window->workspace != window->screen->active_workspace)
+          meta_verbose ("MapRequest on %s mapped = %d minimized = %d\n",
+                        window->desc, window->mapped, window->minimized);
+          if (window->minimized)
             {
-              meta_verbose ("Changing workspace due to MapRequest mapped = %d minimized = %d\n",
-                            window->mapped, window->minimized);
-              meta_window_change_workspace (window,
-                                            window->screen->active_workspace);
+              meta_window_unminimize (window);
+              if (window->workspace != window->screen->active_workspace)
+                {
+                  meta_verbose ("Changing workspace due to MapRequest mapped = %d minimized = %d\n",
+                                window->mapped, window->minimized);
+                  meta_window_change_workspace (window,
+                                                window->screen->active_workspace);
+                }
             }
         }
       break;
     case ReparentNotify:
       {
+        if (window)
+          meta_window_remove_pending_unmap (window, event->xany.serial);
+
         if (event->xreparent.event == screen->xroot)
           meta_stack_tracker_reparent_event (screen->stack_tracker,
                                              &event->xreparent);
@@ -2491,19 +2509,18 @@ event_callback (XEvent   *event,
 
                   workspace = meta_screen_get_workspace_by_index (screen, space);
 
-                  /* Handle clients using the older version of the spec... */
-                  if (time == 0 && workspace)
-                    {
-                      g_warning ("Received a NET_CURRENT_DESKTOP message from "
-                                 "a broken (outdated) client who sent a 0 timestamp");
-
-                      time = meta_display_get_current_time_roundtrip (display);
-                    }
-
                   if (workspace)
-                    meta_workspace_activate (workspace, time);
+                    {
+                      /* Handle clients using the older version of the spec... */
+                      if (time == 0)
+                        time = meta_display_get_current_time_roundtrip (display);
+
+                      meta_workspace_activate (workspace, time);
+                    }
                   else
-                    meta_verbose ("Don't know about workspace %d\n", space);
+                    {
+                      meta_verbose ("Don't know about workspace %d\n", space);
+                    }
                 }
               else if (event->xclient.message_type ==
                        display->atom__NET_NUMBER_OF_DESKTOPS)
@@ -3419,13 +3436,6 @@ xcursor_for_op (MetaDisplay *display,
     case META_GRAB_OP_CLICKING_UNMAXIMIZE:
     case META_GRAB_OP_CLICKING_DELETE:
     case META_GRAB_OP_CLICKING_MENU:
-    case META_GRAB_OP_CLICKING_APPMENU:
-    case META_GRAB_OP_CLICKING_SHADE:
-    case META_GRAB_OP_CLICKING_UNSHADE:
-    case META_GRAB_OP_CLICKING_ABOVE:
-    case META_GRAB_OP_CLICKING_UNABOVE:
-    case META_GRAB_OP_CLICKING_STICK:
-    case META_GRAB_OP_CLICKING_UNSTICK:
       break;
 
     default:
@@ -3638,12 +3648,10 @@ meta_display_begin_grab_op (MetaDisplay *display,
   display->grab_anchor_root_y = root_y;
   display->grab_latest_motion_x = root_x;
   display->grab_latest_motion_y = root_y;
-  display->grab_last_moveresize_time.tv_sec = 0;
-  display->grab_last_moveresize_time.tv_usec = 0;
+  display->grab_last_moveresize_time = 0;
   display->grab_motion_notify_time = 0;
   display->grab_old_window_stacking = NULL;
   display->grab_last_user_action_was_snap = FALSE;
-  display->grab_was_cancelled = FALSE;
   display->grab_frame_action = frame_action;
 
   if (display->grab_resize_timeout_id)
@@ -3658,25 +3666,12 @@ meta_display_begin_grab_op (MetaDisplay *display,
                                           &display->grab_initial_window_pos);
       display->grab_anchor_window_pos = display->grab_initial_window_pos;
 
-      display->grab_wireframe_active =
-        (meta_prefs_get_reduced_resources () && !meta_prefs_get_gnome_accessibility ())  &&
-        (meta_grab_op_is_resizing (display->grab_op) ||
-         meta_grab_op_is_moving (display->grab_op));
-
-      if (display->grab_wireframe_active)
-        {
-          meta_window_calc_showing (display->grab_window);
-          meta_window_begin_wireframe (window);
-        }
-
-      if (!display->grab_wireframe_active &&
-          meta_grab_op_is_resizing (display->grab_op) &&
+      if (meta_grab_op_is_resizing (display->grab_op) &&
           display->grab_window->sync_request_counter != None)
         {
           meta_window_create_sync_request_alarm (display->grab_window);
 
-          window->sync_request_time.tv_sec = 0;
-          window->sync_request_time.tv_usec = 0;
+          window->sync_request_time = 0;
         }
     }
 
@@ -3761,13 +3756,6 @@ meta_display_begin_grab_op (MetaDisplay *display,
     case META_GRAB_OP_CLICKING_UNMAXIMIZE:
     case META_GRAB_OP_CLICKING_DELETE:
     case META_GRAB_OP_CLICKING_MENU:
-    case META_GRAB_OP_CLICKING_APPMENU:
-    case META_GRAB_OP_CLICKING_SHADE:
-    case META_GRAB_OP_CLICKING_UNSHADE:
-    case META_GRAB_OP_CLICKING_ABOVE:
-    case META_GRAB_OP_CLICKING_UNABOVE:
-    case META_GRAB_OP_CLICKING_STICK:
-    case META_GRAB_OP_CLICKING_UNSTICK:
       break;
 
     default:
@@ -3843,28 +3831,6 @@ meta_display_end_grab_op (MetaDisplay *display,
                   display->grab_old_window_stacking);
       g_list_free (display->grab_old_window_stacking);
       display->grab_old_window_stacking = NULL;
-    }
-
-  if (display->grab_wireframe_active)
-    {
-      display->grab_wireframe_active = FALSE;
-      meta_window_end_wireframe (display->grab_window);
-
-      if (!display->grab_was_cancelled)
-        {
-          if (meta_grab_op_is_moving (display->grab_op))
-            meta_window_move (display->grab_window,
-                              TRUE,
-                              display->grab_wireframe_rect.x,
-                              display->grab_wireframe_rect.y);
-          if (meta_grab_op_is_resizing (display->grab_op))
-            meta_window_resize_with_gravity (display->grab_window,
-                                             TRUE,
-                                             display->grab_wireframe_rect.width,
-                                             display->grab_wireframe_rect.height,
-                                             meta_resize_gravity_from_grab_op (display->grab_op));
-        }
-      meta_window_calc_showing (display->grab_window);
     }
 
   if (display->grab_have_pointer)
@@ -4817,13 +4783,6 @@ meta_resize_gravity_from_grab_op (MetaGrabOp op)
     case META_GRAB_OP_CLICKING_UNMAXIMIZE:
     case META_GRAB_OP_CLICKING_DELETE:
     case META_GRAB_OP_CLICKING_MENU:
-    case META_GRAB_OP_CLICKING_APPMENU:
-    case META_GRAB_OP_CLICKING_SHADE:
-    case META_GRAB_OP_CLICKING_UNSHADE:
-    case META_GRAB_OP_CLICKING_ABOVE:
-    case META_GRAB_OP_CLICKING_UNABOVE:
-    case META_GRAB_OP_CLICKING_STICK:
-    case META_GRAB_OP_CLICKING_UNSTICK:
       break;
     default:
       break;
@@ -5163,10 +5122,9 @@ prefs_changed_callback (MetaPreference pref,
     {
       meta_bell_set_audible (display, meta_prefs_bell_is_audible ());
     }
-  else if (pref == META_PREF_COMPOSITING_MANAGER)
+  else if (pref == META_PREF_COMPOSITOR)
     {
-      update_compositor (display, TRUE);
-      meta_display_retheme_all ();
+      meta_display_update_compositor (display);
     }
   else if (pref == META_PREF_THEME_NAME ||
            pref == META_PREF_THEME_TYPE)
@@ -5347,4 +5305,11 @@ int
 meta_display_get_shape_event_base (MetaDisplay *display)
 {
   return display->shape_event_base;
+}
+
+void
+meta_display_update_compositor (MetaDisplay *display)
+{
+  update_compositor (display, TRUE);
+  meta_display_retheme_all ();
 }

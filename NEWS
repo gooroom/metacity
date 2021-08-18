@@ -1,3 +1,61 @@
+Version 3.38.0
+==============
+- Fix segfault when using META_DEBUG_NO_SHADOW=0. (#12)
+- New “compositor” setting and commandline option. (!15)
+- Updated translations.
+
+Version 3.37.1
+==============
+- Don't append "(as superuser)" to window title for flatpak apps. (#9)
+- Remove shade, stick, above and appmenu buttons. (!10)
+- Fix memory leak in MetaGroup.
+- Remove reduced-resources setting. (!6)
+- Remove unused metacity-window-demo. (!8)
+- Remove theme docs. (!7)
+
+Version 3.36.1
+==============
+- Fix fullscreen regression. (#8)
+- Do not unfocus on new window.
+- Updated translations.
+
+Version 3.36.0
+==============
+- Fix fullscreen regression.
+- Remove some dead code.
+
+Version 3.35.92
+===============
+- Use ARGB visual for window frame.
+
+Version 3.35.1
+==============
+- Add support for _GTK_WORKAREAS_Dn. (!3)
+- Add support for _GNOME_WM_STRUT_AREA.
+- Clip shape region to window size. (#627879)
+- Don't move focus to fullscreen window that is on other monitor.
+- Fix blurry titlebar font. (#2)
+- Fix shadow regression with Metacity theme.
+- Fix some memory leaks.
+- Updated translations.
+
+Version 3.34.0
+==============
+- Fix possible crash in compositor.
+
+Version 3.33.92
+===============
+- Added support for _GTK_SHOW_WINDOW_MENU. (#5)
+- Fix memory leak. (#7)
+- Updated translations:
+  Asier Sarasua Garmendia (eu), Jordi Mas (ca).
+
+Version 3.32.0
+==============
+- Convert WM_NAME and WM_CLASS to UTF-8.
+- Updated translations:
+  Nathan Follens (nl), Piotr Drąg (pl).
+
 Version 3.30.1
 ==============
 - Improve focus tracking

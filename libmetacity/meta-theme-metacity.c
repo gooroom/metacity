@@ -42,7 +42,7 @@
  * look out for.
  */
 #define THEME_MAJOR_VERSION 3
-#define THEME_MINOR_VERSION 5
+#define THEME_MINOR_VERSION 4
 #define THEME_VERSION (1000 * THEME_MAJOR_VERSION + THEME_MINOR_VERSION)
 
 /* Translators: This means that an attribute which should have been found
@@ -2897,8 +2897,6 @@ meta_button_function_from_string (MetaThemeMetacity *metacity,
     return META_BUTTON_FUNCTION_MINIMIZE;
   else if (strcmp ("menu", str) == 0)
     return META_BUTTON_FUNCTION_MENU;
-  else if (strcmp ("appmenu", str) == 0)
-    return META_BUTTON_FUNCTION_APPMENU;
   else if (strcmp ("left_left_background", str) == 0)
     return META_BUTTON_FUNCTION_LEFT_LEFT_BACKGROUND;
   else if (strcmp ("left_middle_background", str) == 0)
@@ -3519,7 +3517,7 @@ find_version (const gchar **attribute_names,
 /* Returns whether the version element was successfully parsed.
  * If successfully parsed, then two additional items are returned:
  *
- * satisfied:        whether this version of Mutter meets the version check
+ * satisfied:        whether this version of Metacity meets the version check
  * minimum_required: minimum version of theme format required by version check
  */
 static gboolean
@@ -4801,53 +4799,14 @@ static gboolean
 is_button_allowed (MetaThemeMetacity *metacity,
                    MetaButtonType     type)
 {
-  if (theme_allows (metacity, META_THEME_SHADE_STICK_ABOVE_BUTTONS))
-    {
-      switch (type)
-        {
-          case META_BUTTON_TYPE_SHADE:
-          case META_BUTTON_TYPE_ABOVE:
-          case META_BUTTON_TYPE_STICK:
-          case META_BUTTON_TYPE_UNSHADE:
-          case META_BUTTON_TYPE_UNABOVE:
-          case META_BUTTON_TYPE_UNSTICK:
-            return TRUE;
-
-          case META_BUTTON_TYPE_MENU:
-          case META_BUTTON_TYPE_APPMENU:
-          case META_BUTTON_TYPE_MINIMIZE:
-          case META_BUTTON_TYPE_MAXIMIZE:
-          case META_BUTTON_TYPE_CLOSE:
-          case META_BUTTON_TYPE_SPACER:
-          case META_BUTTON_TYPE_LAST:
-          default:
-            break;
-        }
-    }
-
-  /* now consider the buttons which exist in all versions */
   switch (type)
     {
       case META_BUTTON_TYPE_MENU:
-      case META_BUTTON_TYPE_APPMENU:
       case META_BUTTON_TYPE_MINIMIZE:
       case META_BUTTON_TYPE_MAXIMIZE:
       case META_BUTTON_TYPE_CLOSE:
       case META_BUTTON_TYPE_SPACER:
         return TRUE;
-
-      case META_BUTTON_TYPE_STICK:
-      case META_BUTTON_TYPE_SHADE:
-      case META_BUTTON_TYPE_ABOVE:
-      case META_BUTTON_TYPE_UNSTICK:
-      case META_BUTTON_TYPE_UNSHADE:
-      case META_BUTTON_TYPE_UNABOVE:
-        /* we are being asked for a >v1 button which hasn't been handled yet,
-         * so obviously we're not in a theme which supports that version.
-         * therefore, we don't show the button. return NULL and all will
-         * be well.
-         */
-        break;
 
       case META_BUTTON_TYPE_LAST:
       default:
@@ -5323,29 +5282,8 @@ get_button_function (MetaButtonType type,
     {
       switch (type)
         {
-          case META_BUTTON_TYPE_SHADE:
-            return META_BUTTON_FUNCTION_SHADE;
-
-          case META_BUTTON_TYPE_UNSHADE:
-            return META_BUTTON_FUNCTION_UNSHADE;
-
-          case META_BUTTON_TYPE_ABOVE:
-            return META_BUTTON_FUNCTION_ABOVE;
-
-          case META_BUTTON_TYPE_UNABOVE:
-            return META_BUTTON_FUNCTION_UNABOVE;
-
-          case META_BUTTON_TYPE_STICK:
-            return META_BUTTON_FUNCTION_STICK;
-
-          case META_BUTTON_TYPE_UNSTICK:
-            return META_BUTTON_FUNCTION_UNSTICK;
-
           case META_BUTTON_TYPE_MENU:
             return META_BUTTON_FUNCTION_MENU;
-
-          case META_BUTTON_TYPE_APPMENU:
-            return META_BUTTON_FUNCTION_APPMENU;
 
           case META_BUTTON_TYPE_MINIMIZE:
             return META_BUTTON_FUNCTION_MINIMIZE;
@@ -5476,23 +5414,7 @@ meta_theme_metacity_draw_frame (MetaThemeImpl           *impl,
   draw_info.width = fgeom->width / scale;
   draw_info.height = fgeom->height / scale;
 
-  cairo_save (cr);
-  clip_to_rounded_corners (cr, visible_rect, fgeom, scale);
-
   context = meta_style_info_get_style (style_info, META_STYLE_ELEMENT_WINDOW);
-
-  if (style->window_background_color != NULL)
-    {
-      GdkRGBA color;
-
-      meta_color_spec_render (style->window_background_color, context, &color);
-
-      if (meta_theme_impl_get_composited (impl))
-        color.alpha = style->window_background_alpha / 255.0;
-
-      gdk_cairo_set_source_rgba (cr, &color);
-      cairo_paint (cr);
-    }
 
   /* The enum is in the order the pieces should be rendered. */
   i = 0;
@@ -5564,8 +5486,28 @@ meta_theme_metacity_draw_frame (MetaThemeImpl           *impl,
 
       cairo_save (cr);
 
-      cairo_rectangle (cr, rect.x, rect.y, rect.width, rect.height);
-      cairo_clip (cr);
+      if (i == META_FRAME_PIECE_ENTIRE_BACKGROUND)
+        {
+          clip_to_rounded_corners (cr, rect, fgeom, scale);
+
+          if (style->window_background_color != NULL)
+            {
+              GdkRGBA color;
+
+              meta_color_spec_render (style->window_background_color, context, &color);
+
+              if (meta_theme_impl_get_composited (impl))
+                color.alpha = style->window_background_alpha / 255.0;
+
+              gdk_cairo_set_source_rgba (cr, &color);
+              cairo_paint (cr);
+            }
+        }
+      else
+        {
+          cairo_rectangle (cr, rect.x, rect.y, rect.width, rect.height);
+          cairo_clip (cr);
+        }
 
       if (gdk_cairo_get_clip_rectangle (cr, NULL))
         {
@@ -5670,8 +5612,6 @@ meta_theme_metacity_draw_frame (MetaThemeImpl           *impl,
 
       ++i;
     }
-
-  cairo_restore (cr);
 }
 
 static void
@@ -5818,9 +5758,6 @@ meta_theme_metacity_earliest_version_with_button (MetaButtonFunction function)
       case META_BUTTON_FUNCTION_LEFT_SINGLE_BACKGROUND:
       case META_BUTTON_FUNCTION_RIGHT_SINGLE_BACKGROUND:
         return 3003;
-
-      case META_BUTTON_FUNCTION_APPMENU:
-        return 3005;
 
       case META_BUTTON_FUNCTION_LAST:
       default:

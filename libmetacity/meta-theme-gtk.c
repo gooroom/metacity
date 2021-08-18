@@ -728,7 +728,9 @@ meta_theme_gtk_draw_frame (MetaThemeImpl           *impl,
   if (style->layout->has_title && title_layout)
     {
       PangoRectangle logical;
-      gdouble text_width, x, y;
+      gdouble text_width;
+      int x;
+      int y;
 
       pango_layout_set_width (title_layout, -1);
       pango_layout_get_pixel_extents (title_layout, NULL, &logical);
@@ -847,15 +849,6 @@ meta_theme_gtk_draw_frame (MetaThemeImpl           *impl,
               case META_BUTTON_TYPE_MENU:
                 icon_name = "open-menu-symbolic";
                 break;
-              case META_BUTTON_TYPE_APPMENU:
-                pixbuf = g_object_ref (mini_icon);
-                break;
-              case META_BUTTON_TYPE_SHADE:
-              case META_BUTTON_TYPE_ABOVE:
-              case META_BUTTON_TYPE_STICK:
-              case META_BUTTON_TYPE_UNSHADE:
-              case META_BUTTON_TYPE_UNABOVE:
-              case META_BUTTON_TYPE_UNSTICK:
               case META_BUTTON_TYPE_SPACER:
               case META_BUTTON_TYPE_LAST:
               default:
@@ -874,6 +867,7 @@ meta_theme_gtk_draw_frame (MetaThemeImpl           *impl,
 
               g_assert (pixbuf == NULL);
               pixbuf = gtk_icon_info_load_symbolic_for_context (info, context, NULL, NULL);
+              g_object_unref (info);
             }
 
           if (pixbuf)

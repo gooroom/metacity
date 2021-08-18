@@ -3,8 +3,8 @@ dnl Define version info
 dnl **************************************************************************
 
 m4_define([m_major_version], [3])
-m4_define([m_minor_version], [30])
-m4_define([m_micro_version], [1])
+m4_define([m_minor_version], [38])
+m4_define([m_micro_version], [0])
 m4_define([m_version], [m_major_version.m_minor_version.m_micro_version])
 
 dnl **************************************************************************
@@ -18,7 +18,7 @@ dnl **************************************************************************
 dnl Initialize autoconf
 dnl **************************************************************************
 
-AC_INIT([metacity], [m_version], [m_bugzilla_url])
+AC_INIT([metacity], m_version, [m_bugzilla_url])
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_SRCDIR([src/core/display.c])
 AC_CONFIG_MACRO_DIR([m4])
@@ -54,7 +54,7 @@ dnl **************************************************************************
 dnl Initialize libtool
 dnl **************************************************************************
 
-LT_INIT
+LT_INIT([disable-static])
 LT_LIB_M
 
 dnl **************************************************************************
@@ -69,7 +69,8 @@ dnl Internationalization
 dnl **************************************************************************
 
 AM_GNU_GETTEXT([external])
-AM_GNU_GETTEXT_VERSION([0.19.4])
+AM_GNU_GETTEXT_VERSION([0.19.6])
+AM_GNU_GETTEXT_REQUIRE_VERSION([0.19.6])
 
 GETTEXT_PACKAGE=metacity
 AC_SUBST([GETTEXT_PACKAGE])
@@ -114,9 +115,20 @@ dnl **************************************************************************
 dnl Library version information
 dnl **************************************************************************
 
-m4_define([lt_current], [2])
+dnl Before making a release, the library version should be modified. Follow
+dnl these instructions sequentially:
+dnl 1. If the library source code has changed at all since the last update,
+dnl    then increment lt_revision.
+dnl 2. If any interfaces have been added, removed, or changed since the last
+dnl    update, increment lt_current, and set lt_revision to 0.
+dnl 3. If any interfaces have been added since the last public release, then
+dnl    increment lt_age.
+dnl 4. If any interfaces have been removed or changed since the last public
+dnl    release, then set lt_age to 0.
+
+m4_define([lt_current], [3])
 m4_define([lt_revision], [0])
-m4_define([lt_age], [1])
+m4_define([lt_age], [0])
 m4_define([lt_version_info], [lt_current:lt_revision:lt_age])
 
 AC_SUBST([LT_VERSION_INFO], [lt_version_info])
@@ -143,7 +155,7 @@ AC_CHECK_SIZEOF(__int64)
 ## byte order
 AC_C_BIGENDIAN
 
-METACITY_PC_MODULES="gtk+-3.0 >= $GTK_REQUIRED_VERSION gio-2.0 >= $GLIB_REQUIRED_VERSION pango >= $PANGO_REQUIRED_VERSION gsettings-desktop-schemas >= 3.3.0 xcomposite >= $XCOMPOSITE_REQUIRED_VERSION xfixes xrender xdamage"
+METACITY_PC_MODULES="gtk+-3.0 >= $GTK_REQUIRED_VERSION gio-2.0 >= $GLIB_REQUIRED_VERSION pango >= $PANGO_REQUIRED_VERSION gsettings-desktop-schemas >= 3.3.0 xcomposite >= $XCOMPOSITE_REQUIRED_VERSION xfixes xrender xdamage xres xpresent"
 
 GLIB_GSETTINGS
 
@@ -175,13 +187,6 @@ AC_ARG_ENABLE(render,
 ## here we get the flags we'll actually use
 PKG_CHECK_MODULES(ALL, glib-2.0 >= $GLIB_REQUIRED_VERSION gthread-2.0 >= $GLIB_REQUIRED_VERSION)
 PKG_CHECK_MODULES(METACITY_MESSAGE, gtk+-3.0 >= $GTK_REQUIRED_VERSION)
-PKG_CHECK_MODULES(METACITY_WINDOW_DEMO, gtk+-3.0 >= $GTK_REQUIRED_VERSION)
-
-if $PKG_CONFIG --atleast-version 1.2.0 pangoxft; then
-   echo "pangoxft found"
-else
-   AC_MSG_ERROR("Pango 1.2.0 or greater based on Xft2 is required")
-fi
 
 # Unconditionally use this dir to avoid a circular dep with gnomecc
 GNOME_KEYBINDINGS_KEYSDIR="${datadir}/gnome-control-center/keybindings"
@@ -300,8 +305,6 @@ fi
 
 METACITY_LIBS="$ALL_LIBS $METACITY_LIBS $RANDR_LIBS -lX11 -lXext $X_EXTRA_LIBS $LIBM"
 METACITY_MESSAGE_LIBS="$METACITY_MESSAGE_LIBS -lX11 $X_EXTRA_LIBS"
-METACITY_WINDOW_DEMO_LIBS="$METACITY_WINDOW_DEMO_LIBS -lX11 $X_EXTRA_LIBS $LIBM"
-METACITY_PROPS_LIBS="$METACITY_PROPS_LIBS -lX11 $X_EXTRA_LIBS"
 
 found_sm=no
 case "$METACITY_LIBS" in
@@ -360,6 +363,8 @@ AS_IF([test "x$enable_vulkan" != "xno"], [
     ])
   ])
 ], [found_vulkan=no])
+
+AM_CONDITIONAL([HAVE_VULKAN], [test "x$found_vulkan" = "xyes"])
 
 dnl **************************************************************************
 dnl Process .in files
