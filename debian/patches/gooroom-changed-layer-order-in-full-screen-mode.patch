@@ -1,0 +1,199 @@
+From cd581b1b23a7bdf3982d70c324918ff28ff2dfd6 Mon Sep 17 00:00:00 2001
+From: donghun <donghun@gooroom.kr>
+Date: Fri, 19 Feb 2021 18:57:46 +0900
+Subject: [PATCH] Changed layer order in full-screen mode
+
+---
+ src/core/constraints.c |  8 ++++++++
+ src/core/stack.c       | 53 +++++++++++++++++++++++++++++++++++++++++++++------
+ 2 files changed, 55 insertions(+), 6 deletions(-)
+
+diff --git a/src/core/constraints.c b/src/core/constraints.c
+index 07dea28..99723f4 100644
+--- a/src/core/constraints.c
++++ b/src/core/constraints.c
+@@ -1390,11 +1390,19 @@ constrain_fully_onscreen (MetaWindow         *window,
+       info->is_user_action)
+     return TRUE;
+ 
++#if 0
+   /* Have a helper function handle the constraint for us */
+   return do_screen_and_monitor_relative_constraints (window,
+                                                      info->usable_screen_region,
+                                                      info,
+                                                      check_only);
++#endif
++  /* In the case of multiple monitors, an issue of forcibly converting to a screen with a larger resolution size than the current monitor occurs. Change usable_screen_region in usable_monitor_region.
++   */
++  return do_screen_and_monitor_relative_constraints (window,
++                                                     info->usable_monitor_region,
++                                                     info,
++                                                     check_only);
+ }
+ 
+ static gboolean
+diff --git a/src/core/stack.c b/src/core/stack.c
+index e16014d..71bf827 100644
+--- a/src/core/stack.c
++++ b/src/core/stack.c
+@@ -52,6 +52,7 @@
+ static void stack_sync_to_xserver (MetaStack *stack);
+ static void meta_window_set_stack_position_no_sync (MetaWindow *window,
+                                                     int         position);
++static void stack_do_check_fullscreen (MetaStack *stack);
+ static void stack_do_window_deletions (MetaStack *stack);
+ static void stack_do_window_additions (MetaStack *stack);
+ static void stack_do_relayer          (MetaStack *stack);
+@@ -254,6 +255,7 @@ is_focused_foreach (MetaWindow *window,
+   return TRUE;
+ }
+ 
++#if 0
+ static gboolean
+ windows_on_different_monitor (MetaWindow *a,
+                               MetaWindow *b)
+@@ -264,10 +266,11 @@ windows_on_different_monitor (MetaWindow *a,
+   return meta_screen_get_monitor_for_window (a->screen, a) !=
+     meta_screen_get_monitor_for_window (b->screen, b);
+ }
++#endif
+ 
+ /* Get layer ignoring any transient or group relationships */
+ static MetaStackLayer
+-get_standalone_layer (MetaWindow *window)
++get_standalone_layer (MetaWindow *window, int max_stack_position)
+ {
+   MetaStackLayer layer;
+   gboolean focused_transient = FALSE;
+@@ -302,7 +305,13 @@ get_standalone_layer (MetaWindow *window)
+ 
+       if (window->wm_state_below)
+         layer = META_LAYER_BOTTOM;
+-      else if (window->fullscreen &&
++      else if (window->fullscreen && window->stack_position == max_stack_position)
++        layer = META_LAYER_FULLSCREEN;
++      else if (window->wm_state_above)
++        layer = META_LAYER_TOP;
++      else
++        layer = META_LAYER_NORMAL;
++#if 0
+                (focused_transient ||
+                 window == window->display->focus_window ||
+                 window->display->focus_window == NULL ||
+@@ -314,6 +323,7 @@ get_standalone_layer (MetaWindow *window)
+         layer = META_LAYER_TOP;
+       else
+         layer = META_LAYER_NORMAL;
++#endif
+     }
+ 
+   return layer;
+@@ -347,7 +357,7 @@ get_maximum_layer_in_group (MetaWindow *window)
+ 
+       if (!w->override_redirect)
+         {
+-          layer = get_standalone_layer (w);
++          layer = get_standalone_layer (w, 0);
+           if (layer > max)
+             max = layer;
+         }
+@@ -361,9 +371,9 @@ get_maximum_layer_in_group (MetaWindow *window)
+ }
+ 
+ static void
+-compute_layer (MetaWindow *window)
++compute_layer (MetaWindow *window, int max_stack_position)
+ {
+-  window->layer = get_standalone_layer (window);
++  window->layer = get_standalone_layer (window, max_stack_position);
+ 
+   /* We can only do promotion-due-to-group for dialogs and other
+    * transients, or weird stuff happens like the desktop window and
+@@ -766,6 +776,21 @@ apply_constraints (Constraint **constraints,
+   g_slist_free (heads);
+ }
+ 
++/**
++ * Changing the status of "need_relayer" according to the full screen of the window
++ */
++static void
++stack_do_check_fullscreen (MetaStack *stack)
++{
++  GList *tmp;
++  for (tmp = stack->sorted; tmp; tmp = tmp->next)
++    {
++      MetaWindow *w = (MetaWindow *) tmp->data;
++         if (w->fullscreen == 1)
++        stack->need_relayer = TRUE;
++    }
++}
++
+ /**
+  * Go through "deleted" and take the matching windows
+  * out of "windows".
+@@ -872,8 +897,11 @@ stack_do_window_additions (MetaStack *stack)
+ static void
+ stack_do_relayer (MetaStack *stack)
+ {
++  GList *l;
+   GList *tmp;
+ 
++  int max_stack_position = 0;
++
+   if (!stack->need_relayer)
+       return;
+ 
+@@ -882,6 +910,16 @@ stack_do_relayer (MetaStack *stack)
+ 
+   tmp = stack->sorted;
+ 
++#if 1
++  for (l = stack->sorted; l; l = l->next)
++    {
++      MetaWindow *w = (MetaWindow *) l->data;
++      //if (w->stack_position > max_stack_position)
++      if (max_stack_position < w->stack_position)
++        max_stack_position = w->stack_position;
++    }
++#endif
++
+   while (tmp != NULL)
+     {
+       MetaWindow *w;
+@@ -890,7 +928,7 @@ stack_do_relayer (MetaStack *stack)
+       w = tmp->data;
+       old_layer = w->layer;
+ 
+-      compute_layer (w);
++      compute_layer (w, max_stack_position);
+ 
+       if (w->layer != old_layer)
+         {
+@@ -974,6 +1012,7 @@ stack_do_resort (MetaStack *stack)
+ static void
+ stack_ensure_sorted (MetaStack *stack)
+ {
++  stack_do_check_fullscreen (stack);
+   stack_do_window_deletions (stack);
+   stack_do_window_additions (stack);
+   stack_do_relayer (stack);
+@@ -1255,6 +1294,7 @@ get_default_focus_window (MetaStack     *stack,
+       if (window->type == META_WINDOW_DOCK)
+         continue;
+ 
++#if 0
+       if (window->fullscreen &&
+           not_this_one != NULL &&
+           default_focus_window == NULL &&
+@@ -1268,7 +1308,7 @@ get_default_focus_window (MetaStack     *stack,
+           (!windows_on_different_monitor (window, default_focus_window) ||
+            window->layer == META_LAYER_DESKTOP))
+         continue;
+-
++#endif
+       default_focus_window = window;
+       break;
+     }
+-- 
+2.20.1
+
