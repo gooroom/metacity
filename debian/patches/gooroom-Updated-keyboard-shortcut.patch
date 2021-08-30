@@ -1,0 +1,15 @@
+diff --git a/data/keybindings/50-metacity-windows.xml b/data/keybindings/50-metacity-windows.xml
+index a64e5eb..8052298 100644
+--- a/data/keybindings/50-metacity-windows.xml
++++ b/data/keybindings/50-metacity-windows.xml
+@@ -32,8 +32,8 @@
+ 	<KeyListEntry name="begin-resize"
+ 	              description="Resize window" />
+ 
+-	<KeyListEntry name="toggle-on-all-workspaces"
+-	              description="Toggle window on all workspaces or one" />
++	<!--KeyListEntry name="toggle-on-all-workspaces"
++	              description="Toggle window on all workspaces or one" /-->
+ 
+ 	<KeyListEntry name="raise-or-lower"
+ 	              description="Raise window if covered, otherwise lower it" />
