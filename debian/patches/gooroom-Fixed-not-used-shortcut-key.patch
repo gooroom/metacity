@@ -1,0 +1,27 @@
+From 7fc8e3379b116ed8e216dbf0a04ed2ce87502f0a Mon Sep 17 00:00:00 2001
+From: HaeRyong Jeong <jeong89@gooroom.kr>
+Date: Thu, 17 Sep 2020 19:33:46 +0900
+Subject: [PATCH] Fixed not used shortcut key
+
+Change-Id: Ia2b2fb46c11f5cdaf90100d4d39947bb5f78bb6e
+---
+ src/core/prefs.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/src/core/prefs.c b/src/core/prefs.c
+index bd13b4d..19905ee 100644
+--- a/src/core/prefs.c
++++ b/src/core/prefs.c
+@@ -1380,6 +1380,9 @@ update_binding (MetaKeyPref *binding,
+                       binding->name, keysym, keycode, mods);
+     }
+ 
++  if (strokes && !strokes[0])
++      changed = TRUE;
++
+   return changed;
+ }
+ 
+-- 
+2.20.1
+
