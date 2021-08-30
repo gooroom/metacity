@@ -1,0 +1,12 @@
+diff --git a/src/core/util.c b/src/core/util.c
+index 5c78957..763d353 100644
+--- a/src/core/util.c
++++ b/src/core/util.c
+@@ -429,6 +429,7 @@ meta_show_dialog (const char *type,
+   argvl[i++] = _("Metacity");
+   argvl[i++] = "--text";
+   argvl[i++] = message;
++  argvl[i++] = "--no-wrap";
+ 
+   if (timeout)
+     {
