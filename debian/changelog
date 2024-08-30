@@ -1,3 +1,10 @@
+metacity (1:3.46.1-1+grm4u2) unstable; urgency=medium
+
+  [ boyeon.choi ]
+  * [a252b6c3] Ban the use of animation effects on buttons on the header bar (minimize, maximize, close)
+
+ -- Gooroom Autobuilder <jenkins@gooroom.kr>  Fri, 30 Aug 2024 15:37:17 +0900
+
 metacity (1:3.46.1-1+grm4u1) unstable; urgency=medium
 
   [ jongkyung.woo ]
