@@ -133,6 +133,7 @@ enum
 
   PROP_APPEARS_FOCUSED,
   PROP_DECORATED,
+  PROP_CLIENT_DECORATED,
   PROP_WINDOW_TYPE,
   PROP_SHADED,
 
@@ -3966,6 +3967,53 @@ meta_window_move (MetaWindow  *window,
                                     window->rect.width,
                                     window->rect.height,
                                     TRUE, NULL, NULL);
+}
+
+static void
+meta_window_move_between_rects (MetaWindow          *window,
+                                const MetaRectangle *old_area,
+                                const MetaRectangle *new_area)
+{
+  int rel_x, rel_y;
+  double scale_x, scale_y;
+
+  rel_x = window->user_rect.x - old_area->x;
+  rel_y = window->user_rect.y - old_area->y;
+  scale_x = (double)new_area->width / old_area->width;
+  scale_y = (double)new_area->height / old_area->height;
+
+  window->user_rect.x = new_area->x + rel_x * scale_x;
+  window->user_rect.y = new_area->y + rel_y * scale_y;
+  window->saved_rect.x = window->user_rect.x;
+  window->saved_rect.y = window->user_rect.y;
+
+  meta_window_move_resize (window, FALSE,
+                           window->user_rect.x,
+                           window->user_rect.y,
+                           window->user_rect.width,
+                           window->user_rect.height);
+}
+
+void
+meta_window_move_to_monitor (MetaWindow *window,
+                             int         monitor)
+{
+  MetaRectangle old_area, new_area;
+  const MetaMonitorInfo *current_monitor;
+
+  current_monitor = meta_screen_get_monitor_for_window (window->screen, window);
+
+  if (monitor == current_monitor->number)
+    return;
+
+  meta_window_get_work_area_for_monitor (window,
+                                         current_monitor->number,
+                                         &old_area);
+  meta_window_get_work_area_for_monitor (window,
+                                         monitor,
+                                         &new_area);
+
+  meta_window_move_between_rects (window, &old_area, &new_area);
 }
 
 void
@@ -9218,6 +9266,10 @@ meta_window_get_property (GObject    *object,
         g_value_set_boolean (value, window->decorated);
         break;
 
+      case PROP_CLIENT_DECORATED:
+        g_value_set_boolean (value, meta_window_is_client_decorated (window));
+        break;
+
       case PROP_WINDOW_TYPE:
         g_value_set_enum (value, window->type);
         break;
@@ -9242,6 +9294,13 @@ install_properties (GObjectClass *object_class)
   properties[PROP_DECORATED] =
     g_param_spec_boolean ("decorated", "decorated", "decorated",
                           TRUE, G_PARAM_READABLE | G_PARAM_STATIC_STRINGS);
+
+  properties[PROP_CLIENT_DECORATED] =
+    g_param_spec_boolean ("client-decorated",
+                          NULL,
+                          NULL,
+                          FALSE,
+                          G_PARAM_READABLE | G_PARAM_STATIC_STRINGS);
 
   properties[PROP_WINDOW_TYPE] =
     g_param_spec_enum ("window-type", "window-type", "window-type",
@@ -9372,4 +9431,31 @@ meta_window_get_client_pid (MetaWindow *self)
     }
 
   return self->client_pid;
+}
+
+void
+meta_window_set_custom_frame_extents (MetaWindow *window,
+                                      GtkBorder  *extents)
+{
+  if (extents)
+    {
+      if (window->has_custom_frame_extents &&
+          memcmp (&window->custom_frame_extents, extents, sizeof (GtkBorder)) == 0)
+        return;
+
+      window->has_custom_frame_extents = TRUE;
+      window->custom_frame_extents = *extents;
+    }
+  else
+    {
+      if (!window->has_custom_frame_extents)
+        return;
+
+      window->has_custom_frame_extents = FALSE;
+      memset (&window->custom_frame_extents, 0, sizeof (window->custom_frame_extents));
+    }
+
+  g_object_notify_by_pspec (G_OBJECT (window), properties[PROP_CLIENT_DECORATED]);
+
+  meta_window_queue (window, META_QUEUE_MOVE_RESIZE);
 }

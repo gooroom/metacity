@@ -1,5 +1,13 @@
 # Sed script that inserts the file called HEADER before the header entry.
 #
+# Copyright (C) 2001 Free Software Foundation, Inc.
+# This file is free software; the Free Software Foundation
+# gives unlimited permission to copy and/or distribute it,
+# with or without modifications, as long as this notice is preserved.
+# This file is offered as-is, without any warranty.
+#
+# Written by Bruno Haible <bruno@clisp.org>, 2001.
+#
 # At each occurrence of a line starting with "msgid ", we execute the following
 # commands. At the first occurrence, insert the file. At the following
 # occurrences, do nothing. The distinction between the first and the following

@@ -2,6 +2,7 @@ Makefile.in
 aclocal.m4
 build-aux/ltmain.sh
 configure
+dialog/meta-dialog-resources.?
 m4/libtool.m4
 po/*.gmo
 po/stamp-po

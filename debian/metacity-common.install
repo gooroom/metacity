@@ -1,3 +1,4 @@
+usr/lib/systemd/user/metacity.service
 usr/share/glib-2.0
 usr/share/gnome-control-center/keybindings
 usr/share/locale

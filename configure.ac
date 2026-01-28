@@ -3,7 +3,7 @@ dnl Define version info
 dnl **************************************************************************
 
 m4_define([m_major_version], [3])
-m4_define([m_minor_version], [46])
+m4_define([m_minor_version], [58])
 m4_define([m_micro_version], [1])
 m4_define([m_version], [m_major_version.m_minor_version.m_micro_version])
 
@@ -90,14 +90,22 @@ dnl Check for required packages
 dnl **************************************************************************
 
 GLIB_REQUIRED_VERSION=2.67.3
-GTK_REQUIRED_VERSION=3.24.6
+GSETTINGS_DESKTOP_SCHEMAS_REQUIRED_VERSION=42.0
+GTK_REQUIRED_VERSION=3.24.37
 PANGO_REQUIRED_VERSION=1.2.0
+STARTUP_NOTIFICATION_VERSION=0.7
 XCOMPOSITE_REQUIRED_VERSION=0.3
 XRES_REQUIRED_VERSION=1.2
 
 PKG_CHECK_MODULES([LIBMETACITY], [
   glib-2.0 >= $GLIB_REQUIRED_VERSION
   gtk+-3.0 >= $GTK_REQUIRED_VERSION
+])
+
+PKG_CHECK_MODULES([METACITY_DIALOG], [
+  glib-2.0 >= $GLIB_REQUIRED_VERSION
+  gtk+-3.0 >= $GTK_REQUIRED_VERSION
+  x11
 ])
 
 PKG_CHECK_MODULES([METACITY_THEME_VIEWER], [
@@ -111,6 +119,21 @@ dnl **************************************************************************
 
 GTK_DATA_PREFIX=`$PKG_CONFIG --variable=prefix gtk+-3.0`
 AC_DEFINE_UNQUOTED([GTK_DATA_PREFIX], ["$GTK_DATA_PREFIX"], [GTK+ data prefix])
+
+dnl **************************************************************************
+dnl systemd user unit dir
+dnl **************************************************************************
+
+AS_IF([$PKG_CONFIG systemd], [
+  SYSTEMD_USER_UNIT_DIR=$($PKG_CONFIG \
+    --variable=systemduserunitdir \
+    --define-variable=prefix=${prefix} \
+    systemd)
+], [
+  SYSTEMD_USER_UNIT_DIR="${prefix}/lib/systemd/user"
+])
+
+AC_SUBST([SYSTEMD_USER_UNIT_DIR], [$SYSTEMD_USER_UNIT_DIR])
 
 dnl **************************************************************************
 dnl Library version information
@@ -155,7 +178,7 @@ AC_CHECK_SIZEOF(__int64)
 ## byte order
 AC_C_BIGENDIAN
 
-METACITY_PC_MODULES="gtk+-3.0 >= $GTK_REQUIRED_VERSION gio-2.0 >= $GLIB_REQUIRED_VERSION pango >= $PANGO_REQUIRED_VERSION gsettings-desktop-schemas >= 3.3.0 xcomposite >= $XCOMPOSITE_REQUIRED_VERSION xfixes xrender xdamage xres >= $XRES_REQUIRED_VERSION xpresent"
+METACITY_PC_MODULES="gtk+-3.0 >= $GTK_REQUIRED_VERSION gio-2.0 >= $GLIB_REQUIRED_VERSION pango >= $PANGO_REQUIRED_VERSION gsettings-desktop-schemas >= $GSETTINGS_DESKTOP_SCHEMAS_REQUIRED_VERSION libstartup-notification-1.0 >= $STARTUP_NOTIFICATION_VERSION xcomposite >= $XCOMPOSITE_REQUIRED_VERSION xfixes xrender xdamage xres >= $XRES_REQUIRED_VERSION xpresent"
 
 GLIB_GSETTINGS
 
@@ -174,11 +197,6 @@ AC_ARG_ENABLE(sm,
                  [disable metacity's session management support, for embedded/size-sensitive custom non-GNOME builds]),,
   enable_sm=auto)
 
-AC_ARG_ENABLE(startup-notification,
-  AS_HELP_STRING([--disable-startup-notification],
-                 [disable metacity's startup notification support, for embedded/size-sensitive custom non-GNOME builds]),,
-  enable_startup_notification=auto)
-
 AC_ARG_ENABLE(render,
   AS_HELP_STRING([--disable-render],
                  [disable metacity's use of the RENDER extension]),,
@@ -191,32 +209,6 @@ PKG_CHECK_MODULES(METACITY_MESSAGE, gtk+-3.0 >= $GTK_REQUIRED_VERSION)
 # Unconditionally use this dir to avoid a circular dep with gnomecc
 GNOME_KEYBINDINGS_KEYSDIR="${datadir}/gnome-control-center/keybindings"
 AC_SUBST(GNOME_KEYBINDINGS_KEYSDIR)
-
-STARTUP_NOTIFICATION_VERSION=0.7
-AC_MSG_CHECKING([Startup notification library >= $STARTUP_NOTIFICATION_VERSION])
-if $PKG_CONFIG --atleast-version $STARTUP_NOTIFICATION_VERSION libstartup-notification-1.0; then
-   have_startup_notification=yes
-else
-   have_startup_notification=no
-fi
-AC_MSG_RESULT($have_startup_notification)
-
-if test x$enable_startup_notification = xyes; then
-   have_startup_notification=yes
-   echo "startup-notification support forced on"
-elif test x$enable_startup_notification = xauto; then
-   true
-else
-   have_startup_notification=no
-fi
-
-if test x$have_startup_notification = xyes; then
-  echo "Building with libstartup-notification"
-  METACITY_PC_MODULES="$METACITY_PC_MODULES libstartup-notification-1.0 >= $STARTUP_NOTIFICATION_VERSION"
-  AC_DEFINE(HAVE_STARTUP_NOTIFICATION, , [Building with startup notification support])
-else
-  echo "Building without libstartup-notification"
-fi
 
 AC_MSG_CHECKING([Xcursor])
 if $PKG_CONFIG xcursor; then
@@ -336,11 +328,6 @@ fi
 
 AM_CONDITIONAL(HAVE_SM, test "$found_sm" = "yes") 
 
-AC_PATH_PROG(ZENITY, zenity, no)
-if test x"$ZENITY" = xno; then
-  AC_MSG_ERROR([zenity not found in your path - needed for dialogs])
-fi
-
 AC_SEARCH_LIBS([dlsym], [dl], [], [
   AC_MSG_ERROR([unable to find the dlsym() function])
 ])
@@ -383,12 +370,15 @@ AC_CONFIG_FILES([
   data/pkgconfig/Makefile
   data/pkgconfig/libmetacity.pc
   data/schemas/Makefile
+  data/systemd/Makefile
   data/ui/Makefile
 
   doc/Makefile
   doc/man/Makefile
 
   libmetacity/Makefile
+
+  dialog/Makefile
 
   src/Makefile
   src/tools/Makefile
@@ -421,7 +411,6 @@ echo "  libexecdir ..................: ${libexecdir}"
 echo ""
 echo "  Canberra ....................: ${enable_canberra}"
 echo "  Xinerama ....................: ${have_xinerama}"
-echo "  Startup notification ........: ${have_startup_notification}"
 echo "  Session management ..........: ${found_sm}"
 echo "  Resize-and-rotate ...........: ${found_randr}"
 echo "  Xcursor .....................: ${have_xcursor}"

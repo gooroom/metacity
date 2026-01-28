@@ -6,9 +6,9 @@
 #, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: metacity 3.46.1\n"
+"Project-Id-Version: metacity 3.58.1\n"
 "Report-Msgid-Bugs-To: https://gitlab.gnome.org/GNOME/metacity/issues\n"
-"POT-Creation-Date: 2022-12-24 14:14+0200\n"
+"POT-Creation-Date: 2025-09-28 14:15+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -17,198 +17,10 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#. Translators: This is the title used on dialog boxes
-#: data/applications/metacity.desktop.in:4 src/core/util.c:429
+#. This is the title used on dialog boxes
+#: data/applications/metacity.desktop.in:3 data/ui/delete-dialog.ui:8
+#: data/ui/session-dialog.ui:16
 msgid "Metacity"
-msgstr ""
-
-#. Translators: Do NOT translate or transliterate this text (this is an icon file name)!
-#: data/applications/metacity.desktop.in:7
-msgid "preferences-system-windows"
-msgstr ""
-
-#: data/keybindings/50-metacity-navigation.xml:6
-msgid "Navigation"
-msgstr ""
-
-#: data/keybindings/50-metacity-navigation.xml:9
-msgid "Move window to workspace 1"
-msgstr ""
-
-#: data/keybindings/50-metacity-navigation.xml:12
-msgid "Move window to workspace 2"
-msgstr ""
-
-#: data/keybindings/50-metacity-navigation.xml:15
-msgid "Move window to workspace 3"
-msgstr ""
-
-#: data/keybindings/50-metacity-navigation.xml:18
-msgid "Move window to workspace 4"
-msgstr ""
-
-#: data/keybindings/50-metacity-navigation.xml:21
-msgid "Move window one workspace to the left"
-msgstr ""
-
-#: data/keybindings/50-metacity-navigation.xml:24
-msgid "Move window one workspace to the right"
-msgstr ""
-
-#: data/keybindings/50-metacity-navigation.xml:27
-msgid "Move window one workspace up"
-msgstr ""
-
-#: data/keybindings/50-metacity-navigation.xml:30
-msgid "Move window one workspace down"
-msgstr ""
-
-#: data/keybindings/50-metacity-navigation.xml:33
-msgid "Switch windows"
-msgstr ""
-
-#: data/keybindings/50-metacity-navigation.xml:36
-msgid "Switch applications"
-msgstr ""
-
-#: data/keybindings/50-metacity-navigation.xml:39
-msgid "Switch windows of an application"
-msgstr ""
-
-#: data/keybindings/50-metacity-navigation.xml:42
-msgid "Switch system controls"
-msgstr ""
-
-#: data/keybindings/50-metacity-navigation.xml:45
-msgid "Switch windows directly"
-msgstr ""
-
-#: data/keybindings/50-metacity-navigation.xml:48
-msgid "Switch windows of an app directly"
-msgstr ""
-
-#: data/keybindings/50-metacity-navigation.xml:51
-msgid "Switch system controls directly"
-msgstr ""
-
-#: data/keybindings/50-metacity-navigation.xml:54
-msgid "Hide all normal windows"
-msgstr ""
-
-#: data/keybindings/50-metacity-navigation.xml:57
-msgid "Switch to workspace 1"
-msgstr ""
-
-#: data/keybindings/50-metacity-navigation.xml:60
-msgid "Switch to workspace 2"
-msgstr ""
-
-#: data/keybindings/50-metacity-navigation.xml:63
-msgid "Switch to workspace 3"
-msgstr ""
-
-#: data/keybindings/50-metacity-navigation.xml:66
-msgid "Switch to workspace 4"
-msgstr ""
-
-#: data/keybindings/50-metacity-navigation.xml:69
-msgid "Move to workspace left"
-msgstr ""
-
-#: data/keybindings/50-metacity-navigation.xml:72
-msgid "Move to workspace right"
-msgstr ""
-
-#: data/keybindings/50-metacity-navigation.xml:75
-msgid "Move to workspace above"
-msgstr ""
-
-#: data/keybindings/50-metacity-navigation.xml:78
-msgid "Move to workspace below"
-msgstr ""
-
-#: data/keybindings/50-metacity-system.xml:6
-msgid "System"
-msgstr ""
-
-#: data/keybindings/50-metacity-system.xml:9
-msgid "Show the run command prompt"
-msgstr ""
-
-#: data/keybindings/50-metacity-system.xml:12
-msgid "Show the applications menu"
-msgstr ""
-
-#: data/keybindings/50-metacity-windows.xml:6
-msgid "Windows"
-msgstr ""
-
-#: data/keybindings/50-metacity-windows.xml:9
-msgid "Activate the window menu"
-msgstr ""
-
-#: data/keybindings/50-metacity-windows.xml:12
-msgid "Toggle fullscreen mode"
-msgstr ""
-
-#: data/keybindings/50-metacity-windows.xml:15
-msgid "Toggle maximization state"
-msgstr ""
-
-#: data/keybindings/50-metacity-windows.xml:18
-msgid "Maximize window"
-msgstr ""
-
-#: data/keybindings/50-metacity-windows.xml:21
-msgid "Restore window"
-msgstr ""
-
-#: data/keybindings/50-metacity-windows.xml:24
-msgid "Close window"
-msgstr ""
-
-#: data/keybindings/50-metacity-windows.xml:27
-msgid "Minimize window"
-msgstr ""
-
-#: data/keybindings/50-metacity-windows.xml:30
-msgid "Move window"
-msgstr ""
-
-#: data/keybindings/50-metacity-windows.xml:33
-msgid "Resize window"
-msgstr ""
-
-#: data/keybindings/50-metacity-windows.xml:36
-msgid "Toggle window on all workspaces or one"
-msgstr ""
-
-#: data/keybindings/50-metacity-windows.xml:39
-msgid "Raise window if covered, otherwise lower it"
-msgstr ""
-
-#: data/keybindings/50-metacity-windows.xml:42
-msgid "Raise window above other windows"
-msgstr ""
-
-#: data/keybindings/50-metacity-windows.xml:45
-msgid "Lower window below other windows"
-msgstr ""
-
-#: data/keybindings/50-metacity-windows.xml:48
-msgid "Maximize window vertically"
-msgstr ""
-
-#: data/keybindings/50-metacity-windows.xml:51
-msgid "Maximize window horizontally"
-msgstr ""
-
-#: data/keybindings/50-metacity-windows.xml:55
-msgid "View split on left"
-msgstr ""
-
-#: data/keybindings/50-metacity-windows.xml:59
-msgid "View split on right"
 msgstr ""
 
 #: data/schemas/org.gnome.metacity.gschema.xml:14
@@ -290,6 +102,34 @@ msgid ""
 "client-side decorations. Metacity theme: data is loaded from metacity-theme-"
 "x.xml and CSS. When using this theme type you MUST provide a valid theme "
 "name."
+msgstr ""
+
+#: data/ui/delete-dialog.ui:22
+msgid "_Force Quit"
+msgstr ""
+
+#: data/ui/delete-dialog.ui:37
+msgid "_Wait"
+msgstr ""
+
+#: data/ui/delete-dialog.ui:105
+msgid ""
+"<i>You may choose to wait a short while for it to continue or force the "
+"application to quit entirely.</i>"
+msgstr ""
+
+#: data/ui/session-dialog.ui:30
+msgid "_Cancel"
+msgstr ""
+
+#: data/ui/session-dialog.ui:47
+msgid "_OK"
+msgstr ""
+
+#: data/ui/session-dialog.ui:78
+msgid ""
+"These windows do not support &quot;save current setup&quot; and will have to "
+"be restarted manually next time you log in."
 msgstr ""
 
 #: data/ui/theme-viewer-window.ui:86
@@ -388,6 +228,12 @@ msgstr ""
 msgid "Metacity Theme Viewer"
 msgstr ""
 
+#. Translators: %s is a window title
+#: dialog/meta-delete-dialog.c:69
+#, c-format
+msgid "<tt>%s</tt> is not responding."
+msgstr ""
+
 #: libmetacity/meta-color-spec.c:246
 #, c-format
 msgid ""
@@ -419,8 +265,8 @@ msgstr ""
 #: libmetacity/meta-color-spec.c:323
 #, c-format
 msgid ""
-"GTK color specification must have a close bracket after the state, e.g. gtk:"
-"fg[NORMAL] where NORMAL is the state; could not parse '%s'"
+"GTK color specification must have a close bracket after the state, e.g. "
+"gtk:fg[NORMAL] where NORMAL is the state; could not parse '%s'"
 msgstr ""
 
 #: libmetacity/meta-color-spec.c:332
@@ -666,8 +512,8 @@ msgstr ""
 #: libmetacity/meta-theme-metacity.c:697
 #, c-format
 msgid ""
-"Invalid title scale '%s' (must be one of xx-small,x-small,small,medium,large,"
-"x-large,xx-large)\n"
+"Invalid title scale '%s' (must be one of xx-small,x-"
+"small,small,medium,large,x-large,xx-large)\n"
 msgstr ""
 
 #: libmetacity/meta-theme-metacity.c:726 libmetacity/meta-theme-metacity.c:754
@@ -1041,26 +887,6 @@ msgstr ""
 msgid "Bell event"
 msgstr ""
 
-#. Translators: %s is a window title
-#: src/core/delete.c:94
-#, c-format
-msgid "<tt>%s</tt> is not responding."
-msgstr ""
-
-#: src/core/delete.c:99
-msgid ""
-"You may choose to wait a short while for it to continue or force the "
-"application to quit entirely."
-msgstr ""
-
-#: src/core/delete.c:108
-msgid "_Wait"
-msgstr ""
-
-#: src/core/delete.c:108
-msgid "_Force Quit"
-msgstr ""
-
 #: src/core/main.c:105
 #, c-format
 msgid ""
@@ -1071,57 +897,57 @@ msgid ""
 "PARTICULAR PURPOSE.\n"
 msgstr ""
 
-#: src/core/main.c:201 src/core/main.c:218
+#: src/core/main.c:196 src/core/main.c:213
 #, c-format
 msgid "Option “%s” is deprecated, use the “--compositor” instead."
 msgstr ""
 
-#: src/core/main.c:246
+#: src/core/main.c:241
 #, c-format
 msgid "“%s” is not a valid compositor"
 msgstr ""
 
-#: src/core/main.c:281
+#: src/core/main.c:276
 msgid "Disable connection to session manager"
 msgstr ""
 
-#: src/core/main.c:287
+#: src/core/main.c:282
 msgid "Replace the running window manager with Metacity"
 msgstr ""
 
-#: src/core/main.c:293
+#: src/core/main.c:288
 msgid "Specify session management ID"
 msgstr ""
 
-#: src/core/main.c:298
+#: src/core/main.c:293
 msgid "X Display to use"
 msgstr ""
 
-#: src/core/main.c:304
+#: src/core/main.c:299
 msgid "Initialize session from savefile"
 msgstr ""
 
-#: src/core/main.c:310
+#: src/core/main.c:305
 msgid "Print version"
 msgstr ""
 
-#: src/core/main.c:316
+#: src/core/main.c:311
 msgid "Make X calls synchronous"
 msgstr ""
 
-#: src/core/main.c:325
+#: src/core/main.c:320
 msgid "Turn compositing on"
 msgstr ""
 
-#: src/core/main.c:334
+#: src/core/main.c:329
 msgid "Turn compositing off"
 msgstr ""
 
-#: src/core/main.c:343
+#: src/core/main.c:338
 msgid "Compositor to use"
 msgstr ""
 
-#: src/core/main.c:349
+#: src/core/main.c:344
 msgid ""
 "Don't make fullscreen windows that are maximized and have no decorations"
 msgstr ""
@@ -1155,39 +981,33 @@ msgstr ""
 msgid "Unknown element %s"
 msgstr ""
 
-#: src/core/session.c:1845
-msgid ""
-"These windows do not support &quot;save current setup&quot; and will have to "
-"be restarted manually next time you log in."
-msgstr ""
-
 #: src/core/util.c:106
 #, c-format
 msgid "Opened log file %s\n"
 msgstr ""
 
 #. Translators: the title of a window from another machine
-#: src/core/window-props.c:563
+#: src/core/window-props.c:538
 #, c-format
 msgid "%s (on %s)"
 msgstr ""
 
 #. Simple case-- don't bother to look it up.  It's root.
-#: src/core/window-props.c:598
+#: src/core/window-props.c:573
 #, c-format
 msgid "%s (as superuser)"
 msgstr ""
 
 #. Translators: the title of a window owned by another user
 #. * on this machine
-#: src/core/window-props.c:617
+#: src/core/window-props.c:592
 #, c-format
 msgid "%s (as %s)"
 msgstr ""
 
 #. Translators: the title of a window owned by another user
 #. * on this machine, whose name we don't know
-#: src/core/window-props.c:623
+#: src/core/window-props.c:598
 #, c-format
 msgid "%s (as another user)"
 msgstr ""
@@ -1197,23 +1017,23 @@ msgstr ""
 msgid "Usage: %s\n"
 msgstr ""
 
-#: src/ui/frames.c:1255
+#: src/ui/frames.c:1288
 msgid "Close Window"
 msgstr ""
 
-#: src/ui/frames.c:1258
+#: src/ui/frames.c:1291
 msgid "Window Menu"
 msgstr ""
 
-#: src/ui/frames.c:1261
+#: src/ui/frames.c:1294
 msgid "Minimize Window"
 msgstr ""
 
-#: src/ui/frames.c:1264
+#: src/ui/frames.c:1297
 msgid "Maximize Window"
 msgstr ""
 
-#: src/ui/frames.c:1267
+#: src/ui/frames.c:1300
 msgid "Restore Window"
 msgstr ""
 

@@ -60,10 +60,8 @@ static void prefs_changed_callback (MetaPreference pref,
 static void set_desktop_geometry_hint (MetaScreen *screen);
 static void set_desktop_viewport_hint (MetaScreen *screen);
 
-#ifdef HAVE_STARTUP_NOTIFICATION
 static void meta_screen_sn_event   (SnMonitorEvent *event,
                                     void           *user_data);
-#endif
 
 static int
 set_wm_check_hint (MetaScreen *screen)
@@ -141,6 +139,34 @@ set_wm_icon_size_hint (MetaScreen *screen)
 
   return Success;
 #undef N_VALS
+}
+
+typedef struct
+{
+  SnStartupSequence *sequence;
+  int64_t            time;
+} MetaStartupSequence;
+
+static MetaStartupSequence *
+meta_startup_sequence_new (SnStartupSequence *sequence)
+{
+  MetaStartupSequence *self;
+
+  self = g_new0 (MetaStartupSequence, 1);
+
+  self->sequence = sequence;
+  self->time = g_get_real_time ();
+
+  sn_startup_sequence_ref (sequence);
+
+  return self;
+}
+
+static void
+meta_startup_sequence_free (MetaStartupSequence *self)
+{
+  g_clear_pointer (&self->sequence, sn_startup_sequence_unref);
+  g_free (self);
 }
 
 static void
@@ -496,7 +522,6 @@ meta_screen_new (MetaDisplay *display,
 
   meta_prefs_add_listener (prefs_changed_callback, screen);
 
-#ifdef HAVE_STARTUP_NOTIFICATION
   screen->sn_context =
     sn_monitor_context_new (screen->display->sn_display,
                             screen->number,
@@ -505,7 +530,6 @@ meta_screen_new (MetaDisplay *display,
                             NULL);
   screen->startup_sequences = NULL;
   screen->startup_sequence_timeout = 0;
-#endif
 
   /* Switch to the _NET_CURRENT_DESKTOP workspace */
   {
@@ -534,8 +558,7 @@ meta_screen_free (MetaScreen *screen,
 
   meta_screen_ungrab_keys (screen);
 
-#ifdef HAVE_STARTUP_NOTIFICATION
-  g_slist_free_full (screen->startup_sequences, (GDestroyNotify) sn_startup_sequence_unref);
+  g_slist_free_full (screen->startup_sequences, (GDestroyNotify) meta_startup_sequence_free);
   screen->startup_sequences = NULL;
 
   if (screen->startup_sequence_timeout != 0)
@@ -548,7 +571,6 @@ meta_screen_free (MetaScreen *screen,
       sn_monitor_context_unref (screen->sn_context);
       screen->sn_context = NULL;
     }
-#endif
 
   meta_ui_free (screen->ui);
 
@@ -2341,8 +2363,6 @@ meta_screen_unshow_desktop (MetaScreen *screen)
   meta_screen_update_showing_desktop_hint (screen);
 }
 
-
-#ifdef HAVE_STARTUP_NOTIFICATION
 static gboolean startup_sequence_timeout (void *data);
 
 static void
@@ -2366,12 +2386,15 @@ static void
 add_sequence (MetaScreen        *screen,
               SnStartupSequence *sequence)
 {
+  MetaStartupSequence *meta_sequence;
+
   meta_topic (META_DEBUG_STARTUP,
               "Adding sequence %s\n",
               sn_startup_sequence_get_id (sequence));
-  sn_startup_sequence_ref (sequence);
+
+  meta_sequence = meta_startup_sequence_new (sequence);
   screen->startup_sequences = g_slist_prepend (screen->startup_sequences,
-                                               sequence);
+                                               meta_sequence);
 
   /* our timeout just polls every second, instead of bothering
    * to compute exactly when we may next time out
@@ -2384,17 +2407,38 @@ add_sequence (MetaScreen        *screen,
   update_startup_feedback (screen);
 }
 
+static int
+find_sequence_func (gconstpointer a,
+                    gconstpointer b)
+{
+  MetaStartupSequence *meta_sequence;
+  SnStartupSequence *sequence;
+
+  meta_sequence = (MetaStartupSequence *) a;
+  sequence = (SnStartupSequence *) b;
+
+  if (meta_sequence->sequence == sequence)
+    return 0;
+
+  return -1;
+}
+
 static void
 remove_sequence (MetaScreen        *screen,
                  SnStartupSequence *sequence)
 {
+  GSList *l;
+
   meta_topic (META_DEBUG_STARTUP,
               "Removing sequence %s\n",
               sn_startup_sequence_get_id (sequence));
 
-  screen->startup_sequences = g_slist_remove (screen->startup_sequences,
-                                              sequence);
-  sn_startup_sequence_unref (sequence);
+  l = g_slist_find_custom (screen->startup_sequences,
+                           sequence,
+                           find_sequence_func);
+
+  screen->startup_sequences = g_slist_remove_link (screen->startup_sequences, l);
+  g_slist_free_full (l, (GDestroyNotify) meta_startup_sequence_free);
 
   if (screen->startup_sequences == NULL &&
       screen->startup_sequence_timeout != 0)
@@ -2424,13 +2468,11 @@ collect_timed_out_foreach (void *element,
                            void *data)
 {
   CollectTimedOutData *ctod = data;
-  SnStartupSequence *sequence = element;
-  long tv_sec, tv_usec;
+  MetaStartupSequence *meta_sequence = element;
+  SnStartupSequence *sequence = meta_sequence->sequence;
   double elapsed;
 
-  sn_startup_sequence_get_last_active_time (sequence, &tv_sec, &tv_usec);
-
-  elapsed = (ctod->now - (tv_sec * G_USEC_PER_SEC + tv_usec)) / 1000.0;
+  elapsed = (ctod->now - meta_sequence->time) / 1000.0;
 
   meta_topic (META_DEBUG_STARTUP,
               "Sequence used %g seconds vs. %g max: %s\n",
@@ -2535,7 +2577,6 @@ meta_screen_sn_event (SnMonitorEvent *event,
       break;
     }
 }
-#endif
 
 /* Sets the initial_timestamp and initial_workspace properties
  * of a window according to information given us by the
@@ -2549,7 +2590,6 @@ gboolean
 meta_screen_apply_startup_properties (MetaScreen *screen,
                                       MetaWindow *window)
 {
-#ifdef HAVE_STARTUP_NOTIFICATION
   const char *startup_id;
   GSList *tmp;
   SnStartupSequence *sequence;
@@ -2572,9 +2612,11 @@ meta_screen_apply_startup_properties (MetaScreen *screen,
       tmp = screen->startup_sequences;
       while (tmp != NULL)
         {
+          MetaStartupSequence *meta_sequence;
           const char *wmclass;
 
-          wmclass = sn_startup_sequence_get_wmclass (tmp->data);
+          meta_sequence = tmp->data;
+          wmclass = sn_startup_sequence_get_wmclass (meta_sequence->sequence);
 
           if (wmclass != NULL &&
               ((window->res_class &&
@@ -2582,7 +2624,7 @@ meta_screen_apply_startup_properties (MetaScreen *screen,
                (window->res_name &&
                 strcmp (wmclass, window->res_name) == 0)))
             {
-              sequence = tmp->data;
+              sequence = meta_sequence->sequence;
 
               g_assert (window->startup_id == NULL);
               window->startup_id = g_strdup (sn_startup_sequence_get_id (sequence));
@@ -2614,13 +2656,15 @@ meta_screen_apply_startup_properties (MetaScreen *screen,
       tmp = screen->startup_sequences;
       while (tmp != NULL)
         {
+          MetaStartupSequence *meta_sequence;
           const char *id;
 
-          id = sn_startup_sequence_get_id (tmp->data);
+          meta_sequence = tmp->data;
+          id = sn_startup_sequence_get_id (meta_sequence->sequence);
 
           if (strcmp (id, startup_id) == 0)
             {
-              sequence = tmp->data;
+              sequence = meta_sequence->sequence;
               break;
             }
 
@@ -2671,8 +2715,6 @@ meta_screen_apply_startup_properties (MetaScreen *screen,
                   "Did not find startup sequence for window %s ID \"%s\"\n",
                   window->desc, startup_id);
     }
-
-#endif /* HAVE_STARTUP_NOTIFICATION */
 
   return FALSE;
 }

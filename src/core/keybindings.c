@@ -2127,7 +2127,6 @@ process_tab_grab (MetaDisplay *display,
     case META_KEYBINDING_ACTION_TOGGLE_ABOVE:
     case META_KEYBINDING_ACTION_MAXIMIZE:
     case META_KEYBINDING_ACTION_UNMAXIMIZE:
-    case META_KEYBINDING_ACTION_TOGGLE_SHADED:
     case META_KEYBINDING_ACTION_MINIMIZE:
     case META_KEYBINDING_ACTION_CLOSE:
     case META_KEYBINDING_ACTION_BEGIN_MOVE:
@@ -2149,6 +2148,10 @@ process_tab_grab (MetaDisplay *display,
     case META_KEYBINDING_ACTION_MOVE_TO_WORKSPACE_RIGHT:
     case META_KEYBINDING_ACTION_MOVE_TO_WORKSPACE_UP:
     case META_KEYBINDING_ACTION_MOVE_TO_WORKSPACE_DOWN:
+    case META_KEYBINDING_ACTION_MOVE_TO_MONITOR_LEFT:
+    case META_KEYBINDING_ACTION_MOVE_TO_MONITOR_RIGHT:
+    case META_KEYBINDING_ACTION_MOVE_TO_MONITOR_UP:
+    case META_KEYBINDING_ACTION_MOVE_TO_MONITOR_DOWN:
     case META_KEYBINDING_ACTION_RAISE_OR_LOWER:
     case META_KEYBINDING_ACTION_RAISE:
     case META_KEYBINDING_ACTION_LOWER:
@@ -2987,19 +2990,6 @@ handle_unmaximize         (MetaDisplay    *display,
 }
 
 static void
-handle_toggle_shaded      (MetaDisplay    *display,
-                           MetaScreen     *screen,
-                           MetaWindow     *window,
-                           XEvent         *event,
-                           MetaKeyBinding *binding)
-{
-  if (window->shaded)
-    meta_window_unshade (window, event->xkey.time);
-  else if (window->has_shade_func)
-    meta_window_shade (window, event->xkey.time);
-}
-
-static void
 handle_close              (MetaDisplay    *display,
                            MetaScreen     *screen,
                            MetaWindow     *window,
@@ -3118,6 +3108,25 @@ handle_move_to_workspace  (MetaDisplay    *display,
     {
       /* We could offer to create it I suppose */
     }
+}
+
+static void
+handle_move_to_monitor (MetaDisplay    *display,
+                        MetaScreen     *screen,
+                        MetaWindow     *window,
+                        XEvent         *event,
+                        MetaKeyBinding *binding)
+{
+  gint which = binding->handler->data;
+  const MetaMonitorInfo *current, *new;
+
+  current = meta_screen_get_monitor_for_window (screen, window);
+  new = meta_screen_get_monitor_neighbor (screen, current->number, which);
+
+  if (new == NULL)
+    return;
+
+  meta_window_move_to_monitor (window, new->number);
 }
 
 static void
@@ -3583,13 +3592,6 @@ init_builtin_key_bindings (MetaDisplay *display)
                           handle_unmaximize, 0);
 
   add_builtin_keybinding (display,
-                          "toggle-shaded",
-                          SCHEMA_COMMON_KEYBINDINGS,
-                          META_KEY_BINDING_PER_WINDOW,
-                          META_KEYBINDING_ACTION_TOGGLE_SHADED,
-                          handle_toggle_shaded, 0);
-
-  add_builtin_keybinding (display,
                           "minimize",
                           SCHEMA_COMMON_KEYBINDINGS,
                           META_KEY_BINDING_PER_WINDOW,
@@ -3735,6 +3737,34 @@ init_builtin_key_bindings (MetaDisplay *display)
                           META_KEY_BINDING_PER_WINDOW,
                           META_KEYBINDING_ACTION_MOVE_TO_WORKSPACE_DOWN,
                           handle_move_to_workspace, META_MOTION_DOWN);
+
+  add_builtin_keybinding (display,
+                          "move-to-monitor-left",
+                          SCHEMA_COMMON_KEYBINDINGS,
+                          META_KEY_BINDING_PER_WINDOW,
+                          META_KEYBINDING_ACTION_MOVE_TO_MONITOR_LEFT,
+                          handle_move_to_monitor, META_SCREEN_LEFT);
+
+  add_builtin_keybinding (display,
+                          "move-to-monitor-right",
+                          SCHEMA_COMMON_KEYBINDINGS,
+                          META_KEY_BINDING_PER_WINDOW,
+                          META_KEYBINDING_ACTION_MOVE_TO_MONITOR_RIGHT,
+                          handle_move_to_monitor, META_SCREEN_RIGHT);
+
+  add_builtin_keybinding (display,
+                          "move-to-monitor-up",
+                          SCHEMA_COMMON_KEYBINDINGS,
+                          META_KEY_BINDING_PER_WINDOW,
+                          META_KEYBINDING_ACTION_MOVE_TO_MONITOR_UP,
+                          handle_move_to_monitor, META_SCREEN_UP);
+
+  add_builtin_keybinding (display,
+                          "move-to-monitor-down",
+                          SCHEMA_COMMON_KEYBINDINGS,
+                          META_KEY_BINDING_PER_WINDOW,
+                          META_KEYBINDING_ACTION_MOVE_TO_MONITOR_DOWN,
+                          handle_move_to_monitor, META_SCREEN_DOWN);
 
   add_builtin_keybinding (display,
                           "raise-or-lower",
