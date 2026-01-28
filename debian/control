@@ -1,7 +1,7 @@
 Source: metacity
 Section: x11
-Maintainer: Debian GNOME Maintainers <pkg-gnome-maintainers@lists.alioth.debian.org>
-Uploaders: Dmitry Shachnev <mitya57@debian.org>
+Maintainer: Gooroom <gooroom@gooroom.kr>
+XSBC-Original-Maintainer: Debian GNOME Maintainers <pkg-gnome-maintainers@lists.alioth.debian.org>
 Build-Depends: debhelper-compat (= 13),
                gsettings-desktop-schemas-dev (>= 42.0),
                libcanberra-gtk3-dev,
@@ -26,8 +26,8 @@ Build-Depends: debhelper-compat (= 13),
                libxt-dev,
                yelp-tools
 Standards-Version: 4.7.2
-Vcs-Browser: https://salsa.debian.org/gnome-team/metacity
-Vcs-Git: https://salsa.debian.org/gnome-team/metacity.git
+Vcs-Browser: https://github.com/gooroom/metacity
+Vcs-Git: https://github.com/gooroom/metacity.git
 Homepage: https://gitlab.gnome.org/GNOME/metacity
 
 Package: metacity

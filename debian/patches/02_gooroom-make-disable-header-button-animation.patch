@@ -1,0 +1,22 @@
+diff --git a/src/core/prefs.c b/src/core/prefs.c
+index bd13b4d..1ad0e8d 100644
+--- a/src/core/prefs.c
++++ b/src/core/prefs.c
+@@ -83,7 +83,7 @@ static gboolean auto_raise_delay = 500;
+ static gboolean bell_is_visible = FALSE;
+ static gboolean bell_is_audible = TRUE;
+ static gboolean gnome_accessibility = FALSE;
+-static gboolean gnome_animations = TRUE;
++static gboolean gnome_animations = FALSE;
+ static char *cursor_theme = NULL;
+ static int   cursor_size = 24;
+ static MetaCompositorType compositor = META_COMPOSITOR_TYPE_XRENDER;
+@@ -334,7 +334,7 @@ static MetaBoolPreference preferences_bool[] =
+         META_PREF_GNOME_ANIMATIONS,
+       },
+       &gnome_animations,
+-      TRUE,
++      FALSE,
+     },
+     {
+       { "resize-with-right-button",

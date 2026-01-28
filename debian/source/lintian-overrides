@@ -1,0 +1,6 @@
+# Gooroom local package - not intended for Debian upload
+metacity source: no-nmu-in-changelog
+metacity source: source-nmu-has-incorrect-version-number
+metacity source: latest-debian-changelog-entry-without-new-date
+# Ubuntu-specific field for tracking original maintainer
+metacity source: unknown-field XSBC-Original-Maintainer

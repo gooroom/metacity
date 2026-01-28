@@ -1,0 +1,14 @@
+diff --git a/src/core/window.c b/src/core/window.c
+index c6baf80..5ecf705 100644
+--- a/src/core/window.c
++++ b/src/core/window.c
+@@ -1109,7 +1109,8 @@ meta_window_unmanage (MetaWindow *window,
+                   window->desc);
+     }
+ 
+-  g_assert (window->display->focus_window != window);
++  if(!fopen("/etc/gooroom/.tablet-mode", "r"))
++    g_assert (window->display->focus_window != window);
+ 
+   if (window->struts)
+     {
